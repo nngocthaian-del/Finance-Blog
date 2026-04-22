@@ -490,6 +490,22 @@ with tab2:
     )
 
     if not sector_df.empty and "sector" in sector_df.columns:
+        scol1, scol2 = st.columns([2, 3])
+        with scol1:
+            s_range_label = st.radio(
+                "Show:", ["1 Week", "1 Month", "1 Year", "All", "Custom"],
+                horizontal=True, index=3, key="sector_range"
+            )
+        if s_range_label == "Custom":
+            with scol2:
+                s_date_range = st.date_input(
+                    "Select range:",
+                    value=(datetime.now().date() - timedelta(days=30), datetime.now().date()),
+                    max_value=datetime.now().date(),
+                    label_visibility="collapsed",
+                    key="sector_date_range"
+                )
+
         if sector_name == "All":
             display_notes = sector_df.to_dict("records")
         else:
@@ -498,6 +514,16 @@ with tab2:
             display_notes = filtered.to_dict("records")
 
         display_notes = sorted(display_notes, key=lambda x: x.get("date", ""), reverse=True)
+
+        if s_range_label == "Custom":
+            if isinstance(s_date_range, tuple) and len(s_date_range) == 2:
+                start, end = s_date_range
+                display_notes = [n for n in display_notes if start.strftime("%Y-%m-%d") <= n.get("date","") <= end.strftime("%Y-%m-%d")]
+        else:
+            range_map = {"1 Week": 5, "1 Month": 21, "1 Year": 252, "All": None}
+            r = range_map[s_range_label]
+            if r:
+                display_notes = display_notes[:r]
 
         html = "<style>\n"
         html += ".sector-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }\n"
@@ -526,12 +552,8 @@ with tab2:
             events_html = f"<div style='margin-bottom:4px;'><b>{item.get('headline', '')}</b></div><span style='color:#666; font-size:12px;'>{note_formatted}</span>"
             html += f"<tr><td>{display_date}</td><td><b style='color:#555;'>{sector_disp}</b></td><td>{events_html}</td></tr>\n"
 
-        html += "</table>\n"
-        st.markdown(f"""
-        <div style="height:600px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
-        {html}
-        </div>
-        """, unsafe_allow_html=True)
+        html += "</table>"
+        st.markdown(html, unsafe_allow_html=True)
     else:
         st.info("No sector notes yet — add rows to your Google Sheet!")
 
