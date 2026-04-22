@@ -183,17 +183,19 @@ with tab1:
             period=period_val
         ), use_container_width=True)
 
-    # Yield Curve
+   # Yield Curve
     st.markdown("### Yield Curve")
-
+    st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Compare US Treasury yields across multiple days</p>", unsafe_allow_html=True)
+ 
     @st.cache_data(ttl=3600)
     def get_yields_history():
         maturities = {
-            "1M": "DGS1MO", "3M": "DGS3MO", "6M": "DGS6MO",
-            "1Y": "DGS1", "2Y": "DGS2", "5Y": "DGS5",
-            "10Y": "DGS10", "20Y": "DGS20", "30Y": "DGS30"
+            "1M": "DGS1MO", "2M": "DGS2MO", "3M": "DGS3MO", "6M": "DGS6MO",
+            "1Y": "DGS1", "2Y": "DGS2", "3Y": "DGS3", "5Y": "DGS5",
+            "7Y": "DGS7", "10Y": "DGS10", "20Y": "DGS20", "30Y": "DGS30"
         }
-        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        # Fetch 5 years of historical yield data so the user can select older dates
+        start_date = (datetime.now() - timedelta(days=5*365)).strftime("%Y-%m-%d")
         df_list = []
         for label, series_id in maturities.items():
             try:
@@ -201,40 +203,63 @@ with tab1:
                 s = pd.read_csv(url, index_col=0, na_values=".")
                 s.columns = [label]
                 df_list.append(s)
-            except Exception:
+            except Exception as e:
                 pass
+                
         if not df_list:
             return pd.DataFrame()
+            
         df = pd.concat(df_list, axis=1)
         df = df.dropna(how='all').ffill().dropna()
         df.index = pd.to_datetime(df.index).strftime('%Y-%m-%d')
-        return df[[k for k in maturities.keys() if k in df.columns]]
-
+        cols = [k for k in maturities.keys() if k in df.columns]
+        return df[cols]
+ 
     yield_df = get_yields_history()
+ 
     if not yield_df.empty:
         available_dates = yield_df.index.tolist()[::-1]
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if today_str not in available_dates:
+            available_dates.insert(0, today_str)
+            
         default_dates = [available_dates[0]]
         if len(available_dates) > 5:
             default_dates.append(available_dates[5])
+            
         selected_dates = st.multiselect(
-            "Compare dates:", options=available_dates, default=default_dates,
+            "Compare Dates:",
+            options=available_dates,
+            default=default_dates,
             label_visibility="collapsed"
         )
+        
         if selected_dates:
             fig_yield = go.Figure()
             colors = ["#1a1a1a", "#c0392b", "#2980b9", "#27ae60", "#e67e22"]
             for i, date in enumerate(selected_dates):
                 if date in yield_df.index:
-                    fig_yield.add_trace(go.Scatter(
-                        x=yield_df.columns, y=yield_df.loc[date],
-                        mode="lines+markers", name=date,
-                        line=dict(color=colors[i % len(colors)], width=2),
-                        marker=dict(size=7),
-                        hovertemplate="<b>%{x}</b>: %{y:.3f}%<extra></extra>",
-                    ))
+                    y_data = yield_df.loc[date]
+                    name_str = date
+                else:
+                    y_data = yield_df.iloc[-1]
+                    name_str = f"{date} (Latest: {yield_df.index[-1]})"
+                    st.info(f"**Note:** Official Treasury yield data for `{date}` is not published until tomorrow. Showing latest available.")
+                    
+                color = colors[i % len(colors)]
+                fig_yield.add_trace(go.Scatter(
+                    x=yield_df.columns,
+                    y=y_data,
+                    mode="lines+markers",
+                    name=name_str,
+                    line=dict(color=color, width=2),
+                    marker=dict(size=7, color=color),
+                    hovertemplate="<b>%{x}</b>: %{y:.3f}%<extra></extra>",
+                ))
             fig_yield.update_layout(
                 paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
-                margin=dict(l=0, r=0, t=20, b=20), height=260,
+                margin=dict(l=0, r=0, t=20, b=20),
+                height=260,
                 legend=dict(orientation="h", y=-0.25, font=dict(size=11)),
                 xaxis=dict(showgrid=False, tickfont=dict(size=11)),
                 yaxis=dict(showgrid=True, gridcolor="#ebebeb", ticksuffix="%", tickfont=dict(size=11)),
