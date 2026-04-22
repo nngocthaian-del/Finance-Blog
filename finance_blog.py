@@ -6,56 +6,81 @@ from datetime import datetime, timedelta
 import json
 import os
 
-# --- CMS Persistence ---
-DATA_FILE = "journal_data.json"
+# --- Google Sheets CMS Integration ---
+@st.cache_data(ttl=60)
+def load_google_sheet_data():
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+        
+        # Authenticate using the local Service Account JSON key
+        # For deployment to Streamlit Cloud, you can migrate this to use st.secrets!
+        creds_file = r"c:\Users\nngoc\Downloads\groovy-axis-494104-h0-6b8ede66fff7.json"
+        
+        if os.path.exists(creds_file):
+            creds = Credentials.from_service_account_file(
+                creds_file,
+                scopes=["https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/drive.readonly"]
+            )
+        else:
+            # Fallback for Streamlit Cloud deployment using Secrets
+            service_account_info = st.secrets["gcp_service_account"]
+            creds = Credentials.from_service_account_info(
+                service_account_info,
+                scopes=["https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/drive.readonly"]
+            )
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-            # Remove exact duplicate notes
-            seen = set()
-            deduped = []
-            for item in data.get("news", []):
-                ident = item.get("date","") + item.get("headline","") + item.get("note","")
-                if ident not in seen:
-                    seen.add(ident)
-                    deduped.append(item)
-            # Sort by date descending (latest first)
-            data["news"] = sorted(deduped, key=lambda x: x.get("date", ""), reverse=True)
+        client = gspread.authorize(creds)
+        sheet_url = "https://docs.google.com/spreadsheets/d/1qZWYbXGTFsDMCp9LPOip1PlJEsS_jnOJStxcKkUAS78"
+        doc = client.open_by_url(sheet_url)
+        
+        data = {"news": [], "sectors": {}, "outlook": ""}
+        
+        # 1. Daily Notes
+        try:
+            ws_news = doc.worksheet("Daily Notes")
+            for r in ws_news.get_all_records():
+                if str(r.get("Date", "")).strip():
+                    data["news"].append({
+                        "date": str(r.get("Date", "")),
+                        "headline": str(r.get("Headline", "")),
+                        "note": str(r.get("Note", ""))
+                    })
+        except Exception: pass
+        
+        # 2. Sector Notes
+        try:
+            ws_sectors = doc.worksheet("Sector Notes")
+            for r in ws_sectors.get_all_records():
+                s_name = str(r.get("Sector", "")).strip()
+                if s_name:
+                    if s_name not in data["sectors"]:
+                        data["sectors"][s_name] = []
+                    data["sectors"][s_name].append({
+                        "date": str(r.get("Date", "")),
+                        "headline": str(r.get("Headline", "")),
+                        "note": str(r.get("Note", ""))
+                    })
+        except Exception: pass
+        
+        # 3. Outlook
+        try:
+            ws_outlook = doc.worksheet("Outlook")
+            val = ws_outlook.acell("A2").value
+            data["outlook"] = val if val else ""
+        except Exception: pass
+        
+        # Sort notes descending (latest first)
+        data["news"] = sorted(data["news"], key=lambda x: x.get("date", ""), reverse=True)
+        for s in data["sectors"]:
+            data["sectors"][s] = sorted(data["sectors"][s], key=lambda x: x.get("date", ""), reverse=True)
             
-            # Migrate sectors from string to list of dicts
-            if "sectors" in data:
-                for sector, content in data["sectors"].items():
-                    if isinstance(content, str):
-                        data["sectors"][sector] = [{
-                            "date": datetime.now().strftime("%Y-%m-%d"),
-                            "headline": "Legacy Note Migration",
-                            "note": content
-                        }]
-            return data
-    return {
-        "news": [
-            {
-                "date": "2026-04-21",
-                "headline": "Fed officials signal patience on rate cuts",
-                "note": "Powell reiterates data-dependency; markets pricing in 2 cuts by year-end."
-            },
-            {
-                "date": "2026-04-18",
-                "headline": "Gold hits new ATH above $3,400",
-                "note": "Safe-haven demand on geopolitical tensions. Silver lagging."
-            }
-        ],
-        "sectors": {},
-        "outlook": "#### Macro View\n- Fed trajectory, inflation, growth outlook\n\n#### Asset Allocation\n- Equities / Fixed Income / Commodities / Cash\n\n#### Key Risks\n- Geopolitical, policy, earnings"
-    }
+        return data
+    except Exception as e:
+        st.error(f"Error loading from Google Sheets. Ensure you shared the sheet with your service account email! Details: {e}")
+        return {"news": [], "sectors": {}, "outlook": ""}
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-app_data = load_data()
+app_data = load_google_sheet_data()
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -362,42 +387,7 @@ with tab1:
     st.markdown("### Daily Notes")
     st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Click a row date to highlight</p>", unsafe_allow_html=True)
  
-    with st.expander("➕ Add New Daily Note"):
-        with st.form("new_note_form"):
-            new_date = st.date_input("Date")
-            new_headline = st.text_input("Headline", placeholder="e.g. Fed officials signal patience on rate cuts (Optional)")
-            new_note = st.text_area("Note", placeholder="e.g. Powell reiterates data-dependency...")
-            if st.form_submit_button("Save Note"):
-                headline_to_save = new_headline if new_headline.strip() else "Daily Market Update"
-                app_data["news"].insert(0, {
-                    "date": new_date.strftime("%Y-%m-%d"),
-                    "headline": headline_to_save,
-                    "note": new_note
-                })
-                save_data(app_data)
-                st.rerun()
-                
-    with st.expander("✏️ Edit Past Daily Note"):
-        if app_data["news"]:
-            note_options = {f"{item['date']} | {item['headline'][:40]}...": i for i, item in enumerate(app_data["news"])}
-            selected_edit_key = st.selectbox("Select Note to Edit", list(note_options.keys()))
-            edit_idx = note_options[selected_edit_key]
-            
-            with st.form("edit_note_form"):
-                edit_headline = st.text_input("Headline", value=app_data["news"][edit_idx]["headline"])
-                edit_note = st.text_area("Note", value=app_data["news"][edit_idx]["note"])
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.form_submit_button("Save Changes"):
-                        app_data["news"][edit_idx]["headline"] = edit_headline
-                        app_data["news"][edit_idx]["note"] = edit_note
-                        save_data(app_data)
-                        st.rerun()
-                with col2:
-                    if st.form_submit_button("Delete Note"):
-                        app_data["news"].pop(edit_idx)
-                        save_data(app_data)
-                        st.rerun()
+    # Data loads from Google Sheets automatically
     market_data = get_daily_market_data()
     
     html = "<style>\n"
@@ -534,49 +524,7 @@ with tab2:
         list(sp500_sectors.keys()),
     )
     
-    # Ensure it's a list (should be handled by load_data, but as fallback)
-    if sector_name not in app_data["sectors"] or isinstance(app_data["sectors"][sector_name], str):
-        app_data["sectors"][sector_name] = []
-        
-    sector_list = app_data["sectors"][sector_name]
-    
-    with st.expander(f"➕ Add New Note for {sector_name}"):
-        with st.form("new_sector_note_form"):
-            new_date = st.date_input("Date")
-            new_headline = st.text_input("Headline", placeholder="e.g. Sector upgraded to overweight (Optional)")
-            new_note = st.text_area("Note", placeholder="e.g. Earnings beat driven by margins...")
-            if st.form_submit_button("Save Note"):
-                headline_to_save = new_headline if new_headline.strip() else f"{sector_name} Update"
-                sector_list.insert(0, {
-                    "date": new_date.strftime("%Y-%m-%d"),
-                    "headline": headline_to_save,
-                    "note": new_note
-                })
-                app_data["sectors"][sector_name] = sorted(sector_list, key=lambda x: x.get("date", ""), reverse=True)
-                save_data(app_data)
-                st.rerun()
-                
-    with st.expander(f"✏️ Edit Past Note for {sector_name}"):
-        if sector_list:
-            note_options = {f"{item['date']} | {item['headline'][:40]}...": i for i, item in enumerate(sector_list)}
-            selected_edit_key = st.selectbox("Select Note to Edit", list(note_options.keys()))
-            edit_idx = note_options[selected_edit_key]
-            
-            with st.form("edit_sector_note_form"):
-                edit_headline = st.text_input("Headline", value=sector_list[edit_idx]["headline"])
-                edit_note = st.text_area("Note", value=sector_list[edit_idx]["note"])
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.form_submit_button("Save Changes"):
-                        sector_list[edit_idx]["headline"] = edit_headline
-                        sector_list[edit_idx]["note"] = edit_note
-                        save_data(app_data)
-                        st.rerun()
-                with col2:
-                    if st.form_submit_button("Delete Note"):
-                        sector_list.pop(edit_idx)
-                        save_data(app_data)
-                        st.rerun()
+    # Read-only display of notes from Google Sheets
                         
     # Aggregate sector notes based on selection
     display_notes = []
@@ -591,6 +539,7 @@ with tab2:
                     n_copy["sector"] = s_clean
                     display_notes.append(n_copy)
     else:
+        sector_list = app_data.get("sectors", {}).get(sector_name, [])
         if sector_list:
             for n in sector_list:
                 n_copy = n.copy()
@@ -641,10 +590,9 @@ with tab3:
     st.markdown("---")
     
     current_outlook = app_data.get("outlook", "")
-    edited_outlook = st.text_area("Edit Outlook:", value=current_outlook, height=450, label_visibility="collapsed")
-    if st.button("💾 Save Outlook"):
-        app_data["outlook"] = edited_outlook
-        save_data(app_data)
-        st.success("Saved Investment Outlook!")
-
-
+    current_outlook = app_data.get("outlook", "")
+    if current_outlook:
+        st.markdown(current_outlook)
+    else:
+        st.info("Your Investment Outlook will appear here once you add it to the Google Sheet!")
+        
