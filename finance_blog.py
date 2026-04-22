@@ -248,28 +248,95 @@ with tab1:
 
     news_df = load_macro_news()
 
+    @st.cache_data(ttl=3600)
+    def get_daily_market_data():
+        tickers = {"SP 500": "^GSPC", "Dow": "^DJI", "Gold": "GC=F", "Oil": "CL=F", "Yield": "^TNX"}
+        df_list = []
+        for name, ticker in tickers.items():
+            try:
+                d = yf.download(ticker, period="1y", interval="1d", progress=False)["Close"]
+                if isinstance(d, pd.DataFrame):
+                    d = d.squeeze()
+                d.name = name
+                df_list.append(d)
+            except Exception:
+                pass
+        if not df_list:
+            return None
+        df = pd.concat(df_list, axis=1)
+        pct_df = df.pct_change() * 100
+        if "Yield" in df.columns:
+            pct_df["Yield"] = df["Yield"].diff() * 100
+        pct_df.index = pd.to_datetime(pct_df.index)
+        df.index = pd.to_datetime(df.index)
+        full_idx = pd.date_range(pct_df.index.min(), datetime.now())
+        pct_df = pct_df.reindex(full_idx).ffill()
+        pct_df.index = pct_df.index.strftime('%Y-%m-%d')
+        df = df.reindex(full_idx).ffill()
+        df.index = df.index.strftime('%Y-%m-%d')
+        return {"pct": pct_df, "pts": df}
+
+    market_data = get_daily_market_data()
+
     if not news_df.empty:
-        selected_date = st.radio(
-            "Select date:",
-            options=news_df["date"].tolist(),
-            horizontal=True,
-            label_visibility="collapsed",
-            format_func=lambda d: datetime.strptime(d, "%Y-%m-%d").strftime("%b %d")
-        )
+        html = "<style>\n"
+        html += ".market-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }\n"
+        html += ".market-table th { border-bottom: 2px solid #ccc; padding: 10px; color: #888; font-weight: normal; }\n"
+        html += ".market-table td { border-bottom: 1px solid #ebebeb; padding: 12px 10px; vertical-align: top; }\n"
+        html += ".pos { color: #27ae60; font-weight: 500; }\n"
+        html += ".neg { color: #c0392b; font-weight: 500; }\n"
+        html += ".neu { color: #888; }\n"
+        html += "</style>\n"
+        html += "<table class='market-table'>\n"
+        html += "<tr>\n"
+        html += "<th style='width: 10%;'>Date</th>\n"
+        html += "<th style='width: 40%;'>Events</th>\n"
+        html += "<th>SP 500</th>\n"
+        html += "<th>Dow</th>\n"
+        html += "<th>Gold</th>\n"
+        html += "<th>Yield</th>\n"
+        html += "<th>Oil</th>\n"
+        html += "</tr>\n"
 
         for _, row in news_df.iterrows():
-            is_selected = row["date"] == selected_date
-            bg = "#1a1a1a" if is_selected else "#f0f0ee"
-            fg = "#fafaf8" if is_selected else "#1a1a1a"
-            sub = "#aaa" if is_selected else "#888"
-            display_date = datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y")
-            note_html = str(row.get("note", "")).replace("\n", "<br>")
-            st.markdown(f"""
-            <div style="background:{bg}; color:{fg}; padding:14px 18px; border-radius:6px; margin-bottom:6px;">
-                <div style="font-size:11px; color:{sub}; margin-bottom:4px;">{display_date}</div>
-                <div style="font-size:13px; line-height:1.7;">{note_html}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            date_str = row["date"]
+            display_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%m/%d/%Y")
+            headline = str(row.get("headline", "Daily Market Update"))
+            note = str(row.get("note", ""))
+            note_html = note.replace("\n", "<br/>")
+            events_html = f"<div style='margin-bottom:4px;'><b>* {headline}</b></div><span style='color:#666; font-size:12px;'>{note_html}</span>"
+
+            sp_val = dow_val = gold_val = yield_val = oil_val = "-"
+            if market_data and date_str in market_data["pct"].index:
+                pct_row = market_data["pct"].loc[date_str]
+                pts_row = market_data["pts"].loc[date_str]
+
+                def fmt(pct_val, pts_val, is_yield=False):
+                    try:
+                        if pd.isna(pct_val) or pd.isna(pts_val): return "-"
+                        cls = "pos" if pct_val > 0 else "neg" if pct_val < 0 else "neu"
+                        sign = "+" if pct_val > 0 else ""
+                        if is_yield:
+                            pts_str = f"{pts_val:.3f}%"
+                            return f"<div style='font-weight:500;'>{pts_str}</div><div class='{cls}' style='font-size:11px; margin-top:2px;'>{sign}{pct_val:.2f} bps</div>"
+                        elif pts_val > 1000:
+                            pts_str = f"{pts_val:,.0f}"
+                        else:
+                            pts_str = f"{pts_val:.2f}"
+                        return f"<div style='font-weight:500;'>{pts_str}</div><div class='{cls}' style='font-size:11px; margin-top:2px;'>{sign}{pct_val:.2f}%</div>"
+                    except:
+                        return "-"
+
+                sp_val = fmt(pct_row.get("SP 500"), pts_row.get("SP 500"))
+                dow_val = fmt(pct_row.get("Dow"), pts_row.get("Dow"))
+                gold_val = fmt(pct_row.get("Gold"), pts_row.get("Gold"))
+                yield_val = fmt(pct_row.get("Yield"), pts_row.get("Yield"), is_yield=True)
+                oil_val = fmt(pct_row.get("Oil"), pts_row.get("Oil"))
+
+            html += f"<tr><td>{display_date}</td><td>{events_html}</td><td>{sp_val}</td><td>{dow_val}</td><td>{gold_val}</td><td>{yield_val}</td><td>{oil_val}</td></tr>\n"
+
+        html += "</table>"
+        st.markdown(html, unsafe_allow_html=True)
     else:
         st.info("No news yet — add rows to your Google Sheet!")
 
