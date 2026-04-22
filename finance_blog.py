@@ -247,7 +247,7 @@ with tab1:
                     ))
             fig_yield.update_layout(
                 paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
-                margin=dict(l=50, r=20, t=30, b=60), height=420,
+                margin=dict(l=50, r=20, t=30, b=60), height=520,
                 legend=dict(orientation="h", y=-0.15, font=dict(size=11)),
                 xaxis=dict(showgrid=False, tickfont=dict(size=11)),
                 yaxis=dict(showgrid=True, gridcolor="#ebebeb", ticksuffix="%", tickfont=dict(size=11)),
