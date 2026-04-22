@@ -619,7 +619,7 @@ with tab3:
                     embed_url = drive_link_to_embed(file.get("drive_link", ""))
                     st.markdown(f"""
                     <div style="border:1px solid #ebebeb; border-radius:8px; overflow:hidden; margin-bottom:12px;">
-                        <iframe src="{embed_url}" width="100%" height="200" frameborder="0" allowfullscreen></iframe>
+                        <iframe src="{embed_url}" width="100%" height="400" frameborder="0" allowfullscreen></iframe>
                         <div style="padding:8px 10px; font-size:12px; font-weight:500; background:#fafaf8;">{file.get("filename","")}</div>
                     </div>
                     """, unsafe_allow_html=True)
