@@ -134,7 +134,7 @@ st.markdown("# Market Journal")
 st.markdown("<p style='color:#888; font-size:13px; margin-top:-12px;'>Updated daily · Personal research notes</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-tab1, tab2, tab3 = st.tabs(["Markets", "Equity Research", "Quarterly Outlook"])
+tab1, tab2, tab3 = st.tabs(["Markets", "Equity Research", "Strategy & Recommendations"])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — MARKETS
