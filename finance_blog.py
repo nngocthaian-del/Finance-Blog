@@ -318,7 +318,7 @@ with tab1:
             display_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%m/%d/%Y")
             headline = str(row.get("headline", "Daily Market Update"))
             note = str(row.get("note", ""))
-            note_html = note.replace("\r\n", "<br/>").replace("\n", "<br/>").replace("\r", "<br/>")
+            note_html = note.replace("\r\n", "<br/>").replace("\n", "<br/>").replace("\r", "<br/>").replace("|", "<br/>")
             events_html = f"<div style='margin-bottom:4px;'><b>* {headline}</b></div><span style='color:#666; font-size:12px;'>{note_html}</span>"
 
             sp_val = dow_val = gold_val = yield_val = oil_val = "-"
