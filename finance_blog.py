@@ -456,7 +456,7 @@ with tab2:
                     line = "- " + line
                 formatted_lines.append(line)
             note_formatted = "<br/>".join(formatted_lines)
-            events_html = f"<div style='margin-bottom:4px;'><b>* {item.get('headline', '')}</b></div><span style='color:#666; font-size:12px;'>{note_formatted}</span>"
+            events_html = f"<div style='margin-bottom:4px;'><b>{item.get('headline', '')}</b></div><span style='color:#666; font-size:12px;'>{note_formatted}</span>"
             html += f"<tr><td>{display_date}</td><td><b style='color:#555;'>{sector_disp}</b></td><td>{events_html}</td></tr>\n"
 
         html += "</table>\n"
