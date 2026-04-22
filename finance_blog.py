@@ -319,7 +319,7 @@ with tab1:
             headline = str(row.get("headline", "Daily Market Update"))
             note = str(row.get("note", ""))
             note_html = note
-            events_html = f"<div style='margin-bottom:6px;'><b>* {headline}</b></div><div style='color:#666; font-size:12px; line-height:1.8;'>{note_html}</div>"
+            events_html = f"<div style='margin-bottom:6px;'><b>{headline}</b></div><div style='color:#666; font-size:12px; line-height:1.8;'>{note_html}</div>"
 
             sp_val = dow_val = gold_val = yield_val = oil_val = "-"
             if market_data and date_str in market_data["pct"].index:
