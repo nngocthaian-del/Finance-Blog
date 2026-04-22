@@ -414,9 +414,10 @@ with tab2:
 
     sector_df = load_sector_notes()
 
+    sector_list_no_sp = [s for s in sp500_sectors.keys() if s != "S&P 500"]
     sector_name = st.selectbox(
         "Select a sector to view notes:",
-        ["All"] + list(sp500_sectors.keys()),
+        ["All"] + sector_list_no_sp,
     )
 
     if not sector_df.empty and "sector" in sector_df.columns:
