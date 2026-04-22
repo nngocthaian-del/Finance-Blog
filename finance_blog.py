@@ -193,13 +193,35 @@ with tab1:
     # Gold/Silver + Oil side by side
     col3, col4 = st.columns(2)
     with col3:
-        st.plotly_chart(make_chart(
-            f"Gold & Silver — {period_label}",
-            ["GC=F", "SI=F"],
-            ["Gold", "Silver"],
-            ["#b8860b", "#95a5a6"],
-            period=period_val
-        ), use_container_width=True)
+        df_gold = fetch("GC=F", period=period_val)
+        df_silver = fetch("SI=F", period=period_val)
+        fig_gs = go.Figure()
+        if not df_gold.empty:
+            fig_gs.add_trace(go.Scatter(
+                x=df_gold.index, y=df_gold["GC=F"],
+                name="Gold", line=dict(color="#b8860b", width=1.5),
+                hovertemplate="<b>Gold</b><br>%{x|%b %d}<br>$%{y:,.2f}<extra></extra>",
+                yaxis="y1"
+            ))
+        if not df_silver.empty:
+            fig_gs.add_trace(go.Scatter(
+                x=df_silver.index, y=df_silver["SI=F"],
+                name="Silver", line=dict(color="#95a5a6", width=1.5),
+                hovertemplate="<b>Silver</b><br>%{x|%b %d}<br>$%{y:,.2f}<extra></extra>",
+                yaxis="y2"
+            ))
+        fig_gs.update_layout(
+            title=dict(text=f"Gold & Silver — {period_label}", font=dict(family="DM Serif Display", size=18), x=0.05, xanchor="left"),
+            paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
+            legend=dict(orientation="h", y=-0.18, x=0.05, xanchor="left", font=dict(size=11)),
+            margin=dict(l=50, r=50, t=80, b=60),
+            hovermode="closest",
+            height=380,
+            yaxis=dict(title="Gold (USD)", showgrid=True, gridcolor="#ebebeb", tickfont=dict(size=10), tickprefix="$"),
+            yaxis2=dict(title="Silver (USD)", overlaying="y", side="right", tickfont=dict(size=10), tickprefix="$", showgrid=False),
+            xaxis=dict(showgrid=False, tickfont=dict(size=10)),
+        )
+        st.plotly_chart(fig_gs, use_container_width=True)
     with col4:
         st.plotly_chart(make_chart(
             f"Crude Oil (WTI) — {period_label}",
