@@ -328,7 +328,7 @@ with tab1:
     if not news_df.empty:
         html = "<style>\n"
         html += ".market-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }\n"
-        html += ".market-table th { border-bottom: 2px solid #ccc; padding: 10px; color: #888; font-weight: normal; }\n"
+        html += ".market-table th { background-color: #1a1a1a; color: #fafaf8; padding: 12px 10px; font-weight: 500; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }\n"
         html += ".market-table td { border-bottom: 1px solid #ebebeb; padding: 12px 10px; vertical-align: top; }\n"
         html += ".pos { color: #27ae60; font-weight: 500; }\n"
         html += ".neg { color: #c0392b; font-weight: 500; }\n"
@@ -384,7 +384,7 @@ with tab1:
 
         html += "</table>"
         st.markdown(f"""
-        <div style="height:500px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
+        <div style="height:600px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
         {html}
         </div>
         """, unsafe_allow_html=True)
