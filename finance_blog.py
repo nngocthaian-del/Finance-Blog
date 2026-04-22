@@ -148,24 +148,28 @@ with tab1:
     period_map = {"1 Month": "1mo", "6 Months": "6mo", "1 Year": "1y", "5 Years": "5y"}
     period_val = period_map[period_label]
 
-    st.plotly_chart(make_chart(
-        f"US Indices — {period_label}",
-        ["^GSPC", "^IXIC", "^DJI"],
-        ["S&P 500", "Nasdaq", "Dow Jones"],
-        ["#1a1a1a", "#c0392b", "#2980b9"],
-        period=period_val
-    ), use_container_width=True)
-
-    st.plotly_chart(make_chart(
-        f"Asian Indices — {period_label}",
-        ["^N225", "^HSI", "^KS11"],
-        ["Nikkei", "Hang Seng", "KOSPI"],
-        ["#e74c3c", "#e67e22", "#27ae60"],
-        period=period_val
-    ), use_container_width=True)
-
+    # US + Asian indices side by side
     col1, col2 = st.columns(2)
     with col1:
+        st.plotly_chart(make_chart(
+            f"US Indices — {period_label}",
+            ["^GSPC", "^IXIC", "^DJI"],
+            ["S&P 500", "Nasdaq", "Dow Jones"],
+            ["#1a1a1a", "#c0392b", "#2980b9"],
+            period=period_val
+        ), use_container_width=True)
+    with col2:
+        st.plotly_chart(make_chart(
+            f"Asian Indices — {period_label}",
+            ["^N225", "^HSI", "^KS11"],
+            ["Nikkei", "Hang Seng", "KOSPI"],
+            ["#e74c3c", "#e67e22", "#27ae60"],
+            period=period_val
+        ), use_container_width=True)
+
+    # Gold/Silver + Oil side by side
+    col3, col4 = st.columns(2)
+    with col3:
         st.plotly_chart(make_chart(
             f"Gold & Silver — {period_label}",
             ["GC=F", "SI=F"],
@@ -173,7 +177,7 @@ with tab1:
             ["#b8860b", "#95a5a6"],
             period=period_val
         ), use_container_width=True)
-    with col2:
+    with col4:
         st.plotly_chart(make_chart(
             f"Crude Oil (WTI) — {period_label}",
             ["CL=F"],
@@ -356,64 +360,104 @@ with tab2:
     st.markdown("### Equity Research")
 
     sp500_sectors = {
+        "S&P 500 Energy Sector": "^GSPE",
+        "S&P 500 Information Technology Sector": "^SP500-45",
+        "S&P 500 Consumer Staples Sector": "^SP500-30",
+        "S&P 500 Consumer Discretionary Sector": "^SP500-25",
+        "S&P 500 Financials Sector": "^SP500-40",
         "S&P 500": "^GSPC",
-        "Energy": "^GSPE",
-        "Information Technology": "^SP500-45",
-        "Consumer Staples": "^SP500-30",
-        "Consumer Discretionary": "^SP500-25",
-        "Financials": "^SP500-40",
-        "Health Care": "^SP500-35",
-        "Utilities": "^SP500-55",
-        "Industrials": "^SP500-20",
-        "Materials": "^SP500-15",
-        "Communication Services": "^SP500-50",
-        "Real Estate": "^SP500-60",
+        "S&P 500 Health Care Sector": "^SP500-35",
+        "S&P 500 Materials Sector": "^SP500-15",
+        "S&P 500 Communication Services Sector": "^SP500-50",
+        "S&P 500 Industrials Sector": "^SP500-20",
+        "S&P 500 Utilities Sector": "^SP500-55",
+        "S&P 500 Real Estate Sector": "^SP500-60"
     }
 
     selected_sectors = st.multiselect(
         "Compare Sectors:",
         options=list(sp500_sectors.keys()),
-        default=["S&P 500", "Information Technology", "Energy"]
+        default=["S&P 500", "S&P 500 Information Technology Sector", "S&P 500 Energy Sector"]
     )
 
     eq_period_label = st.radio(
-        "Timeframe:", ["1 Month", "6 Months", "1 Year", "5 Years"],
-        horizontal=True, index=1, key="eq_timeframe"
+        "Equity Timeframe:",
+        ["1 Day", "1 Month", "6 Months", "1 Year", "5 Years"],
+        horizontal=True,
+        index=2,
+        key="eq_timeframe"
     )
-    eq_period_val = {"1 Month": "1mo", "6 Months": "6mo", "1 Year": "1y", "5 Years": "5y"}[eq_period_label]
+    eq_period_map = {"1 Day": "1d", "1 Month": "1mo", "6 Months": "6mo", "1 Year": "1y", "5 Years": "5y"}
+    eq_period_val = eq_period_map[eq_period_label]
 
     if selected_sectors:
         tickers = [sp500_sectors[s] for s in selected_sectors]
-        palette = ["#1a1a1a", "#2980b9", "#c0392b", "#27ae60", "#e67e22", "#8e44ad", "#f39c12"]
-        colors = [palette[i % len(palette)] for i in range(len(selected_sectors))]
+        labels = selected_sectors
+        colors = []
+        palette = ["#2980b9", "#c0392b", "#27ae60", "#e67e22", "#8e44ad", "#f39c12", "#d35400", "#34495e", "#16a085", "#2c3e50", "#bdc3c7"]
+        c_idx = 0
+        for label in labels:
+            if label == "S&P 500":
+                colors.append("#1a1a1a")
+            else:
+                colors.append(palette[c_idx % len(palette)])
+                c_idx += 1
         st.plotly_chart(make_chart(
             "Sector Relative Performance",
-            tickers, selected_sectors, colors,
+            tickers, labels, colors,
             percent=True, period=eq_period_val
         ), use_container_width=True)
 
     st.markdown("---")
-    st.markdown("### Sector Notes")
+    st.markdown("### Sector Notes & Updates")
     st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Edit via Google Sheets → Finance Blog Sectors tab</p>", unsafe_allow_html=True)
 
     sector_df = load_sector_notes()
 
-    if not sector_df.empty and "sector" in sector_df.columns:
-        sector_filter = st.selectbox(
-            "Filter by sector:",
-            ["All"] + sorted(sector_df["sector"].unique().tolist())
-        )
-        filtered = sector_df if sector_filter == "All" else sector_df[sector_df["sector"] == sector_filter]
+    sector_name = st.selectbox(
+        "Select a sector to view notes:",
+        ["All"] + list(sp500_sectors.keys()),
+    )
 
-        for _, row in filtered.iterrows():
-            display_date = datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y")
-            note_html = str(row.get("note", "")).replace("\n", "<br>")
-            st.markdown(f"""
-            <div style="background:#f0f0ee; padding:14px 18px; border-radius:6px; margin-bottom:6px;">
-                <div style="font-size:11px; color:#888; margin-bottom:2px;">{display_date} · <b>{row.get('sector','')}</b></div>
-                <div style="font-size:13px; line-height:1.7;">{note_html}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    if not sector_df.empty and "sector" in sector_df.columns:
+        if sector_name == "All":
+            display_notes = sector_df.to_dict("records")
+        else:
+            clean_name = sector_name.replace("S&P 500 ", "").replace(" Sector", "")
+            filtered = sector_df[sector_df["sector"].str.contains(clean_name, case=False, na=False)]
+            display_notes = filtered.to_dict("records")
+
+        display_notes = sorted(display_notes, key=lambda x: x.get("date", ""), reverse=True)
+
+        html = "<style>\n"
+        html += ".sector-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }\n"
+        html += ".sector-table th { border-bottom: 2px solid #ccc; padding: 10px; color: #888; font-weight: normal; }\n"
+        html += ".sector-table td { border-bottom: 1px solid #ebebeb; padding: 12px 10px; vertical-align: top; }\n"
+        html += "</style>\n"
+        html += "<table class='sector-table'>\n"
+        html += "<tr>\n"
+        html += "<th style='width: 12%;'>Date</th>\n"
+        html += "<th style='width: 25%;'>Sector</th>\n"
+        html += "<th>Events</th>\n"
+        html += "</tr>\n"
+
+        for item in display_notes:
+            date_str = item.get("date", "")
+            display_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%m/%d/%Y") if date_str else ""
+            sector_disp = item.get("sector", "")
+            lines = str(item.get("note", "")).strip().split("\n")
+            formatted_lines = []
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith("-") and not line.startswith("*"):
+                    line = "- " + line
+                formatted_lines.append(line)
+            note_formatted = "<br/>".join(formatted_lines)
+            events_html = f"<div style='margin-bottom:4px;'><b>* {item.get('headline', '')}</b></div><span style='color:#666; font-size:12px;'>{note_formatted}</span>"
+            html += f"<tr><td>{display_date}</td><td><b style='color:#555;'>{sector_disp}</b></td><td>{events_html}</td></tr>\n"
+
+        html += "</table>\n"
+        st.markdown(html, unsafe_allow_html=True)
     else:
         st.info("No sector notes yet — add rows to your Google Sheet!")
 
