@@ -293,6 +293,38 @@ with tab1:
 
     market_data = get_daily_market_data()
 
+    # Export button
+    if not news_df.empty and market_data:
+        export_rows = []
+        for _, row in news_df.iterrows():
+            date_str = row["date"]
+            r = {"Date": date_str, "Headline": row.get("headline",""), "Note": row.get("note","")}
+            if date_str in market_data["pts"].index:
+                pts = market_data["pts"].loc[date_str]
+                pct = market_data["pct"].loc[date_str]
+                r["SP500"] = round(pts.get("SP 500", 0), 2)
+                r["SP500 %"] = round(pct.get("SP 500", 0), 2)
+                r["Dow"] = round(pts.get("Dow", 0), 2)
+                r["Dow %"] = round(pct.get("Dow", 0), 2)
+                r["Gold"] = round(pts.get("Gold", 0), 2)
+                r["Gold %"] = round(pct.get("Gold", 0), 2)
+                r["Yield"] = round(pts.get("Yield", 0), 3)
+                r["Yield chg bps"] = round(pct.get("Yield", 0), 2)
+                r["Oil"] = round(pts.get("Oil", 0), 2)
+                r["Oil %"] = round(pct.get("Oil", 0), 2)
+            export_rows.append(r)
+        export_df = pd.DataFrame(export_rows)
+        import io
+        buf = io.BytesIO()
+        export_df.to_excel(buf, index=False, engine="openpyxl")
+        buf.seek(0)
+        st.download_button(
+            label="📥 Export to Excel",
+            data=buf,
+            file_name=f"market_journal_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
     if not news_df.empty:
         html = "<style>\n"
         html += ".market-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }\n"
@@ -351,7 +383,11 @@ with tab1:
             html += f"<tr><td>{display_date}</td><td>{events_html}</td><td>{sp_val}</td><td>{dow_val}</td><td>{gold_val}</td><td>{yield_val}</td><td>{oil_val}</td></tr>\n"
 
         html += "</table>"
-        st.markdown(html, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="height:500px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
+        {html}
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("No news yet — add rows to your Google Sheet!")
 
