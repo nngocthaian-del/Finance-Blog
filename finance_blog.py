@@ -611,15 +611,15 @@ with tab3:
             st.markdown("<p style='color:#888; font-size:12px;'>No files yet — add to Google Sheet</p>", unsafe_allow_html=True)
             return
         files = section_df.to_dict("records")
-        # 4 per row
-        for i in range(0, len(files), 4):
-            cols = st.columns(4)
-            for j, file in enumerate(files[i:i+4]):
+        # 2 per row
+        for i in range(0, len(files), 2):
+            cols = st.columns(2)
+            for j, file in enumerate(files[i:i+2]):
                 with cols[j]:
                     embed_url = drive_link_to_embed(file.get("drive_link", ""))
                     st.markdown(f"""
                     <div style="border:1px solid #ebebeb; border-radius:8px; overflow:hidden; margin-bottom:12px;">
-                        <iframe src="{embed_url}" width="100%" height="400" frameborder="0" allowfullscreen></iframe>
+                        <iframe src="{embed_url}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>
                         <div style="padding:8px 10px; font-size:12px; font-weight:500; background:#fafaf8;">{file.get("filename","")}</div>
                     </div>
                     """, unsafe_allow_html=True)
