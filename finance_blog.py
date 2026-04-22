@@ -295,34 +295,18 @@ with tab1:
 
     # Filter by time range
     if not news_df.empty:
-        col_r1, col_r2 = st.columns([2, 3])
-        with col_r1:
-            range_label = st.radio(
-                "Show:",
-                ["1 Week", "1 Month", "1 Year", "All", "Custom"],
-                horizontal=True,
-                index=3,
-                key="news_range"
-            )
-        if range_label == "Custom":
-            with col_r2:
-                date_range = st.date_input(
-                    "Select range:",
-                    value=(datetime.now().date() - timedelta(days=30), datetime.now().date()),
-                    max_value=datetime.now().date(),
-                    label_visibility="collapsed"
-                )
-            if isinstance(date_range, tuple) and len(date_range) == 2:
-                start, end = date_range
-                news_df = news_df[
-                    (news_df["date"] >= start.strftime("%Y-%m-%d")) &
-                    (news_df["date"] <= end.strftime("%Y-%m-%d"))
-                ]
-        else:
-            range_map = {"1 Week": 5, "1 Month": 21, "1 Year": 252, "All": None}
-            range_rows = range_map[range_label]
-            if range_rows:
-                news_df = news_df.head(range_rows)
+        date_range = st.date_input(
+            "Select date range:",
+            value=(datetime.now().date() - timedelta(days=30), datetime.now().date()),
+            max_value=datetime.now().date(),
+            label_visibility="collapsed"
+        )
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start, end = date_range
+            news_df = news_df[
+                (news_df["date"] >= start.strftime("%Y-%m-%d")) &
+                (news_df["date"] <= end.strftime("%Y-%m-%d"))
+            ]
 
     # Export button
     if not news_df.empty and market_data:
@@ -553,7 +537,7 @@ with tab2:
             html += f"<tr><td>{display_date}</td><td><b style='color:#555;'>{sector_disp}</b></td><td>{events_html}</td></tr>\n"
 
         html += "</table>"
-        st.markdown(html, unsafe_allow_html=True)
+        st.markdown('<div style="height:500px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">' + html + '</div>', unsafe_allow_html=True)
     else:
         st.info("No sector notes yet — add rows to your Google Sheet!")
 
