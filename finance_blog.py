@@ -542,22 +542,83 @@ with tab2:
         st.info("No sector notes yet — add rows to your Google Sheet!")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 3 — QUARTERLY OUTLOOK
+# TAB 3 — STRATEGY & RECOMMENDATIONS
 # ─────────────────────────────────────────────────────────────────────────────
 with tab3:
-    st.markdown("### Q2 2026 Investment Outlook")
-    st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Last updated: April 2026</p>", unsafe_allow_html=True)
+    st.markdown("### Strategy & Recommendations")
+    st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Updated periodically · Edit via Google Sheets</p>", unsafe_allow_html=True)
     st.markdown("---")
-    st.markdown("""
-#### Macro View
-- Fed trajectory, inflation, growth outlook
 
-#### Asset Allocation
-- Equities / Fixed Income / Commodities / Cash
+    @st.cache_data(ttl=300)
+    def load_strategy():
+        try:
+            client = get_gsheet_client()
+            sheet = client.open_by_key(SPREADSHEET_ID)
+            ws = sheet.worksheet("Finance Blog Strategy")
+            values = ws.get_all_values()
+            headers = values[0]
+            rows = values[1:]
+            df = pd.DataFrame(rows, columns=headers)
+            df = df[df["section"].astype(str).str.strip() != ""]
+            return df
+        except Exception as e:
+            st.error(f"Could not load strategy: {e}")
+            return pd.DataFrame(columns=["section", "filename", "drive_link"])
 
-#### Key Risks
-- Geopolitical, policy, earnings
+    strategy_df = load_strategy()
 
-#### High Conviction Ideas
-- Names or themes you're watching
-    """)
+    def drive_link_to_embed(link):
+        # Convert share link to embed/preview link
+        import re
+        match = re.search(r"/d/([a-zA-Z0-9_-]+)", link)
+        if match:
+            file_id = match.group(1)
+            return f"https://drive.google.com/file/d/{file_id}/preview"
+        return link
+
+    def render_section(section_name, df):
+        section_df = df[df["section"].str.strip() == section_name]
+        if section_df.empty:
+            st.markdown("<p style='color:#888; font-size:12px;'>No files yet — add to Google Sheet</p>", unsafe_allow_html=True)
+            return
+        files = section_df.to_dict("records")
+        # 4 per row
+        for i in range(0, len(files), 4):
+            cols = st.columns(4)
+            for j, file in enumerate(files[i:i+4]):
+                with cols[j]:
+                    embed_url = drive_link_to_embed(file.get("drive_link", ""))
+                    st.markdown(f"""
+                    <div style="border:1px solid #ebebeb; border-radius:8px; overflow:hidden; margin-bottom:12px;">
+                        <iframe src="{embed_url}" width="100%" height="200" frameborder="0" allowfullscreen></iframe>
+                        <div style="padding:8px 10px; font-size:12px; font-weight:500; background:#fafaf8;">{file.get("filename","")}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    if not strategy_df.empty:
+        sections = strategy_df["section"].unique().tolist()
+
+        # Memo section first
+        memo_sections = [s for s in sections if "memo" in s.lower() or "strategy" in s.lower() or "outlook" in s.lower()]
+        pitch_sections = [s for s in sections if "pitch" in s.lower()]
+        other_sections = [s for s in sections if s not in memo_sections and s not in pitch_sections]
+
+        if memo_sections:
+            st.markdown("#### Memo")
+            for s in memo_sections:
+                if len(memo_sections) > 1:
+                    st.markdown(f"<p style='color:#888; font-size:12px; margin-bottom:6px;'>{s}</p>", unsafe_allow_html=True)
+                render_section(s, strategy_df)
+
+        if pitch_sections:
+            st.markdown("---")
+            st.markdown("#### Stock Pitch Ideas")
+            for s in pitch_sections:
+                render_section(s, strategy_df)
+
+        for s in other_sections:
+            st.markdown("---")
+            st.markdown(f"#### {s}")
+            render_section(s, strategy_df)
+    else:
+        st.info("No files yet — add rows to Finance Blog Strategy sheet!")
