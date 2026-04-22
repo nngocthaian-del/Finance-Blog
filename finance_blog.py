@@ -120,7 +120,7 @@ def make_chart(title, tickers, labels, colors, percent=True, period="6mo"):
         paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
         legend=dict(orientation="h", y=-0.18, x=0.05, xanchor="left", font=dict(size=11)),
         margin=dict(l=50, r=20, t=80, b=60),
-        hovermode="x unified",
+        hovermode="closest",
         xaxis=dict(showgrid=False, tickfont=dict(size=10), zeroline=False),
         yaxis=dict(showgrid=True, gridcolor="#ebebeb", tickfont=dict(size=10),
                    zeroline=True, zerolinecolor="#ccc", zerolinewidth=1,
@@ -295,17 +295,34 @@ with tab1:
 
     # Filter by time range
     if not news_df.empty:
-        range_label = st.radio(
-            "Show:",
-            ["1 Week", "1 Month", "1 Year", "All"],
-            horizontal=True,
-            index=3,
-            key="news_range"
-        )
-        range_map = {"1 Week": 5, "1 Month": 21, "1 Year": 252, "All": None}
-        range_rows = range_map[range_label]
-        if range_rows:
-            news_df = news_df.head(range_rows)
+        col_r1, col_r2 = st.columns([2, 3])
+        with col_r1:
+            range_label = st.radio(
+                "Show:",
+                ["1 Week", "1 Month", "1 Year", "All", "Custom"],
+                horizontal=True,
+                index=3,
+                key="news_range"
+            )
+        if range_label == "Custom":
+            with col_r2:
+                date_range = st.date_input(
+                    "Select range:",
+                    value=(datetime.now().date() - timedelta(days=30), datetime.now().date()),
+                    max_value=datetime.now().date(),
+                    label_visibility="collapsed"
+                )
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                start, end = date_range
+                news_df = news_df[
+                    (news_df["date"] >= start.strftime("%Y-%m-%d")) &
+                    (news_df["date"] <= end.strftime("%Y-%m-%d"))
+                ]
+        else:
+            range_map = {"1 Week": 5, "1 Month": 21, "1 Year": 252, "All": None}
+            range_rows = range_map[range_label]
+            if range_rows:
+                news_df = news_df.head(range_rows)
 
     # Export button
     if not news_df.empty and market_data:
