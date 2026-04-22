@@ -401,7 +401,7 @@ with tab1:
 
         html += "</table>"
         st.markdown(f"""
-        <div style="height:500px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
+        <div style="height:600px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
         {html}
         </div>
         """, unsafe_allow_html=True)
