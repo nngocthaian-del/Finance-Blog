@@ -293,6 +293,23 @@ with tab1:
 
     market_data = get_daily_market_data()
 
+    # Filter by time range
+    if not news_df.empty:
+        range_label = st.radio(
+            "Show:",
+            ["1 Week", "1 Month", "1 Year", "All"],
+            horizontal=True,
+            index=3,
+            key="news_range"
+        )
+        range_map = {"1 Week": 5, "1 Month": 30, "1 Year": 365, "All": None}
+        range_rows = range_map[range_label]
+        if range_rows and range_label == "1 Week":
+            news_df = news_df.head(5)
+        elif range_rows:
+            cutoff = (datetime.now() - timedelta(days=range_rows)).strftime("%Y-%m-%d")
+            news_df = news_df[news_df["date"] >= cutoff]
+
     # Export button
     if not news_df.empty and market_data:
         export_rows = []
@@ -384,7 +401,7 @@ with tab1:
 
         html += "</table>"
         st.markdown(f"""
-        <div style="height:600px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
+        <div style="height:500px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
         {html}
         </div>
         """, unsafe_allow_html=True)
