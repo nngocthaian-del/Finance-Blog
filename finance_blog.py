@@ -116,14 +116,14 @@ def make_chart(title, tickers, labels, colors, percent=True, period="6mo"):
     fig.update_layout(
         title=dict(text=title, font=dict(family="DM Serif Display", size=18), x=0),
         paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
-        legend=dict(orientation="h", y=-0.15, font=dict(size=11)),
-        margin=dict(l=0, r=0, t=40, b=40),
+        legend=dict(orientation="h", y=-0.18, font=dict(size=11)),
+        margin=dict(l=50, r=20, t=50, b=60),
         hovermode="x unified",
         xaxis=dict(showgrid=False, tickfont=dict(size=10), zeroline=False),
         yaxis=dict(showgrid=True, gridcolor="#ebebeb", tickfont=dict(size=10),
                    zeroline=True, zerolinecolor="#ccc", zerolinewidth=1,
                    ticksuffix="%" if percent else ""),
-        height=300,
+        height=380,
     )
     return fig
 
@@ -247,8 +247,8 @@ with tab1:
                     ))
             fig_yield.update_layout(
                 paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
-                margin=dict(l=0, r=0, t=20, b=20), height=260,
-                legend=dict(orientation="h", y=-0.25, font=dict(size=11)),
+                margin=dict(l=50, r=20, t=30, b=60), height=420,
+                legend=dict(orientation="h", y=-0.15, font=dict(size=11)),
                 xaxis=dict(showgrid=False, tickfont=dict(size=11)),
                 yaxis=dict(showgrid=True, gridcolor="#ebebeb", ticksuffix="%", tickfont=dict(size=11)),
             )
