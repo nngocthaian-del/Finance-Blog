@@ -360,24 +360,24 @@ with tab2:
     st.markdown("### Equity Research")
 
     sp500_sectors = {
-        "S&P 500 Energy Sector": "^GSPE",
-        "S&P 500 Information Technology Sector": "^SP500-45",
-        "S&P 500 Consumer Staples Sector": "^SP500-30",
-        "S&P 500 Consumer Discretionary Sector": "^SP500-25",
-        "S&P 500 Financials Sector": "^SP500-40",
         "S&P 500": "^GSPC",
-        "S&P 500 Health Care Sector": "^SP500-35",
-        "S&P 500 Materials Sector": "^SP500-15",
-        "S&P 500 Communication Services Sector": "^SP500-50",
-        "S&P 500 Industrials Sector": "^SP500-20",
-        "S&P 500 Utilities Sector": "^SP500-55",
-        "S&P 500 Real Estate Sector": "^SP500-60"
+        "Energy": "^GSPE",
+        "Information Technology": "^SP500-45",
+        "Consumer Staples": "^SP500-30",
+        "Consumer Discretionary": "^SP500-25",
+        "Financials": "^SP500-40",
+        "Health Care": "^SP500-35",
+        "Materials": "^SP500-15",
+        "Communication Services": "^SP500-50",
+        "Industrials": "^SP500-20",
+        "Utilities": "^SP500-55",
+        "Real Estate": "^SP500-60"
     }
 
     selected_sectors = st.multiselect(
         "Compare Sectors:",
         options=list(sp500_sectors.keys()),
-        default=["S&P 500", "S&P 500 Information Technology Sector", "S&P 500 Energy Sector"]
+        default=["S&P 500", "Information Technology", "Energy"]
     )
 
     eq_period_label = st.radio(
