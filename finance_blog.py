@@ -302,13 +302,10 @@ with tab1:
             index=3,
             key="news_range"
         )
-        range_map = {"1 Week": 5, "1 Month": 30, "1 Year": 365, "All": None}
+        range_map = {"1 Week": 5, "1 Month": 21, "1 Year": 252, "All": None}
         range_rows = range_map[range_label]
-        if range_rows and range_label == "1 Week":
-            news_df = news_df.head(5)
-        elif range_rows:
-            cutoff = (datetime.now() - timedelta(days=range_rows)).strftime("%Y-%m-%d")
-            news_df = news_df[news_df["date"] >= cutoff]
+        if range_rows:
+            news_df = news_df.head(range_rows)
 
     # Export button
     if not news_df.empty and market_data:
@@ -487,7 +484,7 @@ with tab2:
 
         html = "<style>\n"
         html += ".sector-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }\n"
-        html += ".sector-table th { border-bottom: 2px solid #ccc; padding: 10px; color: #888; font-weight: normal; }\n"
+        html += ".sector-table th { background-color: #1a1a1a; color: #fafaf8; padding: 12px 10px; font-weight: 500; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }\n"
         html += ".sector-table td { border-bottom: 1px solid #ebebeb; padding: 12px 10px; vertical-align: top; }\n"
         html += "</style>\n"
         html += "<table class='sector-table'>\n"
@@ -513,7 +510,11 @@ with tab2:
             html += f"<tr><td>{display_date}</td><td><b style='color:#555;'>{sector_disp}</b></td><td>{events_html}</td></tr>\n"
 
         html += "</table>\n"
-        st.markdown(html, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="height:600px; overflow-y:auto; border:1px solid #ebebeb; border-radius:8px; padding:0 8px;">
+        {html}
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("No sector notes yet — add rows to your Google Sheet!")
 
