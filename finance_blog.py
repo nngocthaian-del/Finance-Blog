@@ -59,8 +59,10 @@ def load_macro_news():
         client = get_gsheet_client()
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws = sheet.worksheet("Finance Blog Macro")
-        records = ws.get_all_records()
-        df = pd.DataFrame(records)
+        values = ws.get_all_values()
+        headers = values[0]
+        rows = values[1:]
+        df = pd.DataFrame(rows, columns=headers)
         df = df[df["date"].astype(str).str.strip() != ""]
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
         df = df.sort_values("date", ascending=False).reset_index(drop=True)
