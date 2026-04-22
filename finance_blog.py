@@ -318,9 +318,8 @@ with tab1:
             display_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%m/%d/%Y")
             headline = str(row.get("headline", "Daily Market Update"))
             note = str(row.get("note", ""))
-            note_parts = note.replace("\r\n", "|").replace("\n", "|").replace("\r", "|").split("|")
-            note_html = "".join([f"<div style='color:#666; font-size:12px; line-height:1.8;'>{p.strip()}</div>" for p in note_parts if p.strip()])
-            events_html = f"<div style='margin-bottom:6px;'><b>* {headline}</b></div>{note_html}"
+            note_html = note
+            events_html = f"<div style='margin-bottom:6px;'><b>* {headline}</b></div><div style='color:#666; font-size:12px; line-height:1.8;'>{note_html}</div>"
 
             sp_val = dow_val = gold_val = yield_val = oil_val = "-"
             if market_data and date_str in market_data["pct"].index:
