@@ -114,9 +114,9 @@ def make_chart(title, tickers, labels, colors, percent=True, period="6mo"):
             hovertemplate=f"<b>{label}</b><br>%{{x|%b %d}}<br>{'%{y:.2f}%' if percent else '%{y:,.2f}'}<extra></extra>",
         ))
     fig.update_layout(
-        title=dict(text=title, font=dict(family="DM Serif Display", size=18), x=0, xanchor="left", xref="plot"),
+        title=dict(text=title, font=dict(family="DM Serif Display", size=18), x=0.05, xanchor="left"),
         paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
-        legend=dict(orientation="h", y=-0.18, x=0, xanchor="left", xref="plot", font=dict(size=11)),
+        legend=dict(orientation="h", y=-0.18, x=0.05, xanchor="left", font=dict(size=11)),
         margin=dict(l=50, r=20, t=50, b=60),
         hovermode="x unified",
         xaxis=dict(showgrid=False, tickfont=dict(size=10), zeroline=False),
