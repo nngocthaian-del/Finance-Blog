@@ -183,83 +183,67 @@ with tab1:
             period=period_val
         ), use_container_width=True)
 
-   # Yield Curve
+    # Yield Curve
     st.markdown("### Yield Curve")
-    st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Compare US Treasury yields across multiple days</p>", unsafe_allow_html=True)
- 
+    st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>US Treasury yields — official source</p>", unsafe_allow_html=True)
+
     @st.cache_data(ttl=3600)
     def get_yields_history():
-        maturities = {
-            "1M": "DGS1MO", "2M": "DGS2MO", "3M": "DGS3MO", "6M": "DGS6MO",
-            "1Y": "DGS1", "2Y": "DGS2", "3Y": "DGS3", "5Y": "DGS5",
-            "7Y": "DGS7", "10Y": "DGS10", "20Y": "DGS20", "30Y": "DGS30"
+        col_map = {
+            "1 Mo": "1M", "2 Mo": "2M", "3 Mo": "3M", "4 Mo": "4M",
+            "6 Mo": "6M", "1 Yr": "1Y", "2 Yr": "2Y", "3 Yr": "3Y",
+            "5 Yr": "5Y", "7 Yr": "7Y", "10 Yr": "10Y", "20 Yr": "20Y", "30 Yr": "30Y"
         }
-        # Fetch 5 years of historical yield data so the user can select older dates
-        start_date = (datetime.now() - timedelta(days=5*365)).strftime("%Y-%m-%d")
-        df_list = []
-        for label, series_id in maturities.items():
+        years = [datetime.now().year - 1, datetime.now().year]
+        dfs = []
+        for year in years:
             try:
-                url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
-                s = pd.read_csv(url, index_col=0, na_values=".")
-                s.columns = [label]
-                df_list.append(s)
-            except Exception as e:
+                url = f"https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}"
+                df = pd.read_csv(url)
+                df = df.rename(columns={"Date": "date"})
+                df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+                df = df.set_index("date")
+                rename = {k: v for k, v in col_map.items() if k in df.columns}
+                df = df.rename(columns=rename)
+                keep = [v for v in col_map.values() if v in df.columns]
+                dfs.append(df[keep])
+            except Exception:
                 pass
-                
-        if not df_list:
+        if not dfs:
             return pd.DataFrame()
-            
-        df = pd.concat(df_list, axis=1)
-        df = df.dropna(how='all').ffill().dropna()
-        df.index = pd.to_datetime(df.index).strftime('%Y-%m-%d')
-        cols = [k for k in maturities.keys() if k in df.columns]
-        return df[cols]
- 
+        result = pd.concat(dfs)
+        result = result[~result.index.duplicated(keep="last")]
+        result = result.sort_index()
+        result = result.dropna(how="all").ffill()
+        return result
+
     yield_df = get_yields_history()
- 
     if not yield_df.empty:
         available_dates = yield_df.index.tolist()[::-1]
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        if today_str not in available_dates:
-            available_dates.insert(0, today_str)
-            
         default_dates = [available_dates[0]]
         if len(available_dates) > 5:
             default_dates.append(available_dates[5])
-            
         selected_dates = st.multiselect(
-            "Compare Dates:",
-            options=available_dates,
-            default=default_dates,
+            "Compare dates:", options=available_dates, default=default_dates,
             label_visibility="collapsed"
         )
-        
         if selected_dates:
             fig_yield = go.Figure()
             colors = ["#1a1a1a", "#c0392b", "#2980b9", "#27ae60", "#e67e22"]
+            ordered_cols = ["1M","2M","3M","4M","6M","1Y","2Y","3Y","5Y","7Y","10Y","20Y","30Y"]
+            plot_cols = [c for c in ordered_cols if c in yield_df.columns]
             for i, date in enumerate(selected_dates):
                 if date in yield_df.index:
-                    y_data = yield_df.loc[date]
-                    name_str = date
-                else:
-                    y_data = yield_df.iloc[-1]
-                    name_str = f"{date} (Latest: {yield_df.index[-1]})"
-                    st.info(f"**Note:** Official Treasury yield data for `{date}` is not published until tomorrow. Showing latest available.")
-                    
-                color = colors[i % len(colors)]
-                fig_yield.add_trace(go.Scatter(
-                    x=yield_df.columns,
-                    y=y_data,
-                    mode="lines+markers",
-                    name=name_str,
-                    line=dict(color=color, width=2),
-                    marker=dict(size=7, color=color),
-                    hovertemplate="<b>%{x}</b>: %{y:.3f}%<extra></extra>",
-                ))
+                    fig_yield.add_trace(go.Scatter(
+                        x=plot_cols, y=yield_df.loc[date, plot_cols],
+                        mode="lines+markers", name=date,
+                        line=dict(color=colors[i % len(colors)], width=2),
+                        marker=dict(size=7),
+                        hovertemplate="<b>%{x}</b>: %{y:.3f}%<extra></extra>",
+                    ))
             fig_yield.update_layout(
                 paper_bgcolor="#fafaf8", plot_bgcolor="#fafaf8",
-                margin=dict(l=0, r=0, t=20, b=20),
-                height=260,
+                margin=dict(l=0, r=0, t=20, b=20), height=260,
                 legend=dict(orientation="h", y=-0.25, font=dict(size=11)),
                 xaxis=dict(showgrid=False, tickfont=dict(size=11)),
                 yaxis=dict(showgrid=True, gridcolor="#ebebeb", ticksuffix="%", tickfont=dict(size=11)),
