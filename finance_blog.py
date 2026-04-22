@@ -134,21 +134,42 @@ st.markdown("# Market Journal")
 st.markdown("<p style='color:#888; font-size:13px; margin-top:-12px;'>Updated daily · Personal research notes</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-tab1, tab2, tab3 = st.tabs(["Markets", "Equity Research", "Strategy & Recommendations"])
+tab1, tab2, tab3 = st.tabs(["Markets", "Equity Research", "Quarterly Outlook"])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — MARKETS
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
 
-    period_label = st.radio(
-        "Timeframe:",
-        ["1 Month", "6 Months", "1 Year", "5 Years"],
-        horizontal=True,
-        index=1
-    )
+    t_col1, t_col2 = st.columns([3, 2])
+    with t_col1:
+        period_label = st.radio(
+            "Timeframe:",
+            ["1 Month", "6 Months", "1 Year", "5 Years", "Custom"],
+            horizontal=True,
+            index=1
+        )
     period_map = {"1 Month": "1mo", "6 Months": "6mo", "1 Year": "1y", "5 Years": "5y"}
-    period_val = period_map[period_label]
+    if period_label == "Custom":
+        with t_col2:
+            custom_range = st.date_input(
+                "Pick range:",
+                value=(datetime.now().date() - timedelta(days=180), datetime.now().date()),
+                max_value=datetime.now().date(),
+                label_visibility="collapsed"
+            )
+        if isinstance(custom_range, tuple) and len(custom_range) == 2:
+            delta = (custom_range[1] - custom_range[0]).days
+            if delta <= 30: period_val = "1mo"
+            elif delta <= 90: period_val = "3mo"
+            elif delta <= 180: period_val = "6mo"
+            elif delta <= 365: period_val = "1y"
+            elif delta <= 730: period_val = "2y"
+            else: period_val = "5y"
+        else:
+            period_val = "6mo"
+    else:
+        period_val = period_map[period_label]
 
     # US + Asian indices side by side
     col1, col2 = st.columns(2)
@@ -433,15 +454,37 @@ with tab2:
         default=["S&P 500", "Information Technology", "Energy"]
     )
 
-    eq_period_label = st.radio(
-        "Equity Timeframe:",
-        ["1 Day", "1 Month", "6 Months", "1 Year", "5 Years"],
-        horizontal=True,
-        index=2,
-        key="eq_timeframe"
-    )
+    eq_col1, eq_col2 = st.columns([3, 2])
+    with eq_col1:
+        eq_period_label = st.radio(
+            "Timeframe:",
+            ["1 Day", "1 Month", "6 Months", "1 Year", "5 Years", "Custom"],
+            horizontal=True,
+            index=2,
+            key="eq_timeframe"
+        )
     eq_period_map = {"1 Day": "1d", "1 Month": "1mo", "6 Months": "6mo", "1 Year": "1y", "5 Years": "5y"}
-    eq_period_val = eq_period_map[eq_period_label]
+    if eq_period_label == "Custom":
+        with eq_col2:
+            eq_custom = st.date_input(
+                "Pick range:",
+                value=(datetime.now().date() - timedelta(days=180), datetime.now().date()),
+                max_value=datetime.now().date(),
+                label_visibility="collapsed",
+                key="eq_custom_range"
+            )
+        if isinstance(eq_custom, tuple) and len(eq_custom) == 2:
+            delta = (eq_custom[1] - eq_custom[0]).days
+            if delta <= 30: eq_period_val = "1mo"
+            elif delta <= 90: eq_period_val = "3mo"
+            elif delta <= 180: eq_period_val = "6mo"
+            elif delta <= 365: eq_period_val = "1y"
+            elif delta <= 730: eq_period_val = "2y"
+            else: eq_period_val = "5y"
+        else:
+            eq_period_val = "6mo"
+    else:
+        eq_period_val = eq_period_map[eq_period_label]
 
     if selected_sectors:
         tickers = [sp500_sectors[s] for s in selected_sectors]
