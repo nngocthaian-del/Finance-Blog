@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
+import uuid
+import re
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -37,18 +39,26 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; font-weight: 400; }
 }
 .block-container { padding-top: 2rem; padding-bottom: 2rem; }
 hr { border: none; border-top: 1px solid #e5e5e5; margin: 1.5rem 0; }
+
+/* Quill editor styles */
+.ql-toolbar { border-radius: 8px 8px 0 0 !important; border-color: #e5e5e5 !important; background: #fff; }
+.ql-container { border-radius: 0 0 8px 8px !important; border-color: #e5e5e5 !important; font-family: 'DM Mono', monospace !important; font-size: 14px !important; min-height: 400px; }
+.ql-editor { min-height: 380px; line-height: 1.8; }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Google Sheets connection ──────────────────────────────────────────────────
 SPREADSHEET_ID = "1qZWYbXGTFsDMCp9LPOip1PlJEsS_jnOJStxcKkUAS78"
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly",
-          "https://www.googleapis.com/auth/drive.readonly"]
+
+# Read+write scopes so we can save posts
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
 @st.cache_resource
 def get_gsheet_client():
     creds_dict = dict(st.secrets["gcp_service_account"])
-    # Fix private key formatting — replace literal \n with real newlines
     creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
@@ -86,6 +96,62 @@ def load_sector_notes():
     except Exception as e:
         st.error(f"Could not load sector notes: {e}")
         return pd.DataFrame(columns=["date", "sector", "headline", "note"])
+
+# ── Posts helpers ─────────────────────────────────────────────────────────────
+def get_posts_worksheet():
+    """Get or create the Finance Blog Posts worksheet."""
+    client = get_gsheet_client()
+    sheet = client.open_by_key(SPREADSHEET_ID)
+    try:
+        ws = sheet.worksheet("Finance Blog Posts")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sheet.add_worksheet(title="Finance Blog Posts", rows=1000, cols=6)
+        ws.append_row(["id", "date", "title", "content", "status", "updated_at"])
+    return ws
+
+def load_posts(status_filter=None):
+    """Load all posts, optionally filtering by status."""
+    try:
+        ws = get_posts_worksheet()
+        records = ws.get_all_records()
+        df = pd.DataFrame(records)
+        if df.empty:
+            return pd.DataFrame(columns=["id", "date", "title", "content", "status", "updated_at"])
+        df = df[df["id"].astype(str).str.strip() != ""]
+        if status_filter:
+            df = df[df["status"] == status_filter]
+        df = df.sort_values("updated_at", ascending=False).reset_index(drop=True)
+        return df
+    except Exception as e:
+        st.error(f"Could not load posts: {e}")
+        return pd.DataFrame(columns=["id", "date", "title", "content", "status", "updated_at"])
+
+def save_post(post_id, title, content, status):
+    """Insert a new post or update an existing one."""
+    ws = get_posts_worksheet()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    records = ws.get_all_records()
+    for i, row in enumerate(records):
+        if str(row.get("id", "")) == str(post_id):
+            # Update existing — row index is i+2 (1-indexed + header)
+            ws.update(f"A{i+2}:F{i+2}", [[post_id, row.get("date", today), title, content, status, now]])
+            return "updated"
+
+    # New post
+    ws.append_row([post_id, today, title, content, status, now])
+    return "created"
+
+def delete_post(post_id):
+    """Delete a post row by id."""
+    ws = get_posts_worksheet()
+    records = ws.get_all_records()
+    for i, row in enumerate(records):
+        if str(row.get("id", "")) == str(post_id):
+            ws.delete_rows(i + 2)
+            return True
+    return False
 
 # ── Helper: fetch price history ───────────────────────────────────────────────
 @st.cache_data(ttl=300)
@@ -129,12 +195,28 @@ def make_chart(title, tickers, labels, colors, percent=True, period="6mo"):
     )
     return fig
 
+# ── Session state defaults ────────────────────────────────────────────────────
+if "editor_authenticated" not in st.session_state:
+    st.session_state.editor_authenticated = False
+if "editing_post_id" not in st.session_state:
+    st.session_state.editing_post_id = None
+if "editor_title" not in st.session_state:
+    st.session_state.editor_title = ""
+if "editor_content" not in st.session_state:
+    st.session_state.editor_content = ""
+if "editor_status" not in st.session_state:
+    st.session_state.editor_status = "draft"
+if "posts_cache_bust" not in st.session_state:
+    st.session_state.posts_cache_bust = 0
+if "view_post_id" not in st.session_state:
+    st.session_state.view_post_id = None
+
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("# Market Journal")
 st.markdown("<p style='color:#888; font-size:13px; margin-top:-12px;'>Updated daily · Personal research notes</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-tab1, tab2, tab3 = st.tabs(["Markets", "Equity Research", "Strategy & Recommendations"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Markets", "Equity Research", "Strategy & Recommendations", "Notes", "✏️ Write"])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — MARKETS
@@ -160,7 +242,6 @@ with tab1:
         period_val = "6mo"
         period_label = "6 Months"
 
-    # US + Asian indices side by side
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(make_chart(
@@ -179,7 +260,6 @@ with tab1:
             period=period_val
         ), use_container_width=True)
 
-    # Gold/Silver + Oil side by side
     col3, col4 = st.columns(2)
     with col3:
         df_gold = fetch("GC=F", period=period_val)
@@ -221,7 +301,6 @@ with tab1:
             period=period_val
         ), use_container_width=True)
 
-    # Yield Curve
     st.markdown("### Yield Curve")
     st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>US Treasury yields — official source</p>", unsafe_allow_html=True)
 
@@ -288,7 +367,6 @@ with tab1:
             )
             st.plotly_chart(fig_yield, use_container_width=True)
 
-    # ── Daily News Table ──────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### Daily Notes")
     st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Updated daily at 4pm · Edit via Google Sheets</p>", unsafe_allow_html=True)
@@ -325,7 +403,6 @@ with tab1:
 
     market_data = get_daily_market_data()
 
-    # Filter by time range
     if not news_df.empty:
         date_range = st.date_input(
             "Select date range:",
@@ -340,7 +417,6 @@ with tab1:
                 (news_df["date"] <= end.strftime("%Y-%m-%d"))
             ]
 
-    # Export button
     if not news_df.empty and market_data:
         export_rows = []
         for _, row in news_df.iterrows():
@@ -397,8 +473,7 @@ with tab1:
             display_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%m/%d/%Y")
             headline = str(row.get("headline", "Daily Market Update"))
             note = str(row.get("note", ""))
-            note_html = note
-            events_html = f"<div style='margin-bottom:6px;'><b>{headline}</b></div><div style='color:#666; font-size:12px; line-height:1.8;'>{note_html}</div>"
+            events_html = f"<div style='margin-bottom:6px;'><b>{headline}</b></div><div style='color:#666; font-size:12px; line-height:1.8;'>{note}</div>"
 
             sp_val = dow_val = gold_val = yield_val = oil_val = "-"
             if market_data and date_str in market_data["pct"].index:
@@ -594,8 +669,6 @@ with tab3:
     strategy_df = load_strategy()
 
     def drive_link_to_embed(link):
-        # Convert share link to embed/preview link
-        import re
         match = re.search(r"/d/([a-zA-Z0-9_-]+)", link)
         if match:
             file_id = match.group(1)
@@ -608,7 +681,6 @@ with tab3:
             st.markdown("<p style='color:#888; font-size:12px;'>No files yet — add to Google Sheet</p>", unsafe_allow_html=True)
             return
         files = section_df.to_dict("records")
-        # 4 per row
         for i in range(0, len(files), 2):
             cols = st.columns(2)
             for j, file in enumerate(files[i:i+2]):
@@ -623,8 +695,6 @@ with tab3:
 
     if not strategy_df.empty:
         sections = strategy_df["section"].unique().tolist()
-
-        # Memo section first
         memo_sections = [s for s in sections if "memo" in s.lower() or "strategy" in s.lower() or "outlook" in s.lower()]
         pitch_sections = [s for s in sections if "pitch" in s.lower()]
         other_sections = [s for s in sections if s not in memo_sections and s not in pitch_sections]
@@ -648,3 +718,361 @@ with tab3:
             render_section(s, strategy_df)
     else:
         st.info("No files yet — add rows to Finance Blog Strategy sheet!")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 4 — NOTES (public reading view)
+# ─────────────────────────────────────────────────────────────────────────────
+with tab4:
+    st.markdown("### Notes")
+    st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Research notes & market commentary</p>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    # If a specific post is selected, show it full-width
+    if st.session_state.view_post_id:
+        try:
+            ws = get_posts_worksheet()
+            records = ws.get_all_records()
+            post = next((r for r in records if str(r.get("id","")) == str(st.session_state.view_post_id)), None)
+            if post and post.get("status") == "published":
+                if st.button("← Back to all notes", key="back_btn"):
+                    st.session_state.view_post_id = None
+                    st.rerun()
+                st.markdown(f"## {post.get('title','')}")
+                date_str = post.get("date","")
+                updated = post.get("updated_at","")
+                st.markdown(f"<p style='color:#888; font-size:12px;'>{date_str} · Last updated {updated[:10] if updated else ''}</p>", unsafe_allow_html=True)
+                st.markdown("---")
+                # Render the HTML content safely
+                st.markdown(f"""
+                <div style="max-width: 720px; line-height: 1.9; font-size: 15px;">
+                {post.get('content','')}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.warning("Post not found or not published.")
+                if st.button("← Back", key="back_btn_err"):
+                    st.session_state.view_post_id = None
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Could not load post: {e}")
+    else:
+        # Show post list
+        try:
+            pub_posts = load_posts(status_filter="published")
+            if pub_posts.empty:
+                st.info("No published notes yet.")
+            else:
+                for _, post in pub_posts.iterrows():
+                    title = post.get("title", "Untitled")
+                    date_str = post.get("date", "")
+                    content = post.get("content", "")
+                    # Strip HTML tags for preview
+                    preview_text = re.sub(r'<[^>]+>', '', content)[:200].strip()
+                    if len(re.sub(r'<[^>]+>', '', content)) > 200:
+                        preview_text += "..."
+
+                    with st.container():
+                        col_a, col_b = st.columns([5, 1])
+                        with col_a:
+                            st.markdown(f"**{title}**")
+                            st.markdown(f"<p style='color:#888; font-size:12px; margin-top:-8px;'>{date_str}</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p style='color:#555; font-size:13px; line-height:1.6;'>{preview_text}</p>", unsafe_allow_html=True)
+                        with col_b:
+                            if st.button("Read →", key=f"read_{post['id']}"):
+                                st.session_state.view_post_id = post["id"]
+                                st.rerun()
+                    st.markdown("<hr style='margin: 0.8rem 0; border-color: #f0f0f0;'>", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Could not load posts: {e}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 5 — WRITE (password-protected editor)
+# ─────────────────────────────────────────────────────────────────────────────
+with tab5:
+
+    # ── Password gate ─────────────────────────────────────────────────────────
+    if not st.session_state.editor_authenticated:
+        st.markdown("### Editor Access")
+        st.markdown("<p style='color:#888; font-size:13px;'>This area is private.</p>", unsafe_allow_html=True)
+        pw_input = st.text_input("Password", type="password", key="pw_input")
+        if st.button("Enter", key="pw_btn"):
+            correct_pw = st.secrets.get("post_password", "")
+            if pw_input == correct_pw and correct_pw != "":
+                st.session_state.editor_authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+
+    # ── Authenticated editor ──────────────────────────────────────────────────
+    st.markdown("### ✏️ Write")
+
+    # Sidebar-style post list on the left, editor on the right
+    list_col, editor_col = st.columns([1, 3])
+
+    with list_col:
+        st.markdown("**Your posts**")
+
+        if st.button("＋ New post", use_container_width=True, key="new_post_btn"):
+            st.session_state.editing_post_id = str(uuid.uuid4())
+            st.session_state.editor_title = ""
+            st.session_state.editor_content = ""
+            st.session_state.editor_status = "draft"
+
+        st.markdown("---")
+
+        try:
+            all_posts = load_posts()
+            _ = st.session_state.posts_cache_bust  # trigger refresh
+
+            if all_posts.empty:
+                st.markdown("<p style='color:#888; font-size:12px;'>No posts yet.</p>", unsafe_allow_html=True)
+            else:
+                for _, p in all_posts.iterrows():
+                    status_badge = "🟢" if p.get("status") == "published" else "⚪"
+                    label = f"{status_badge} {p.get('title','Untitled')[:28]}"
+                    if st.button(label, key=f"edit_{p['id']}", use_container_width=True):
+                        st.session_state.editing_post_id = p["id"]
+                        st.session_state.editor_title = p.get("title", "")
+                        st.session_state.editor_content = p.get("content", "")
+                        st.session_state.editor_status = p.get("status", "draft")
+        except Exception as e:
+            st.error(f"Error loading posts: {e}")
+
+    with editor_col:
+        if not st.session_state.editing_post_id:
+            st.markdown("""
+            <div style="text-align:center; padding: 80px 0; color:#ccc;">
+                <p style="font-size:48px;">✏️</p>
+                <p style="font-size:14px;">Select a post to edit or create a new one</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # Title input
+            new_title = st.text_input(
+                "Title",
+                value=st.session_state.editor_title,
+                placeholder="Post title...",
+                label_visibility="collapsed",
+                key=f"title_input_{st.session_state.editing_post_id}"
+            )
+            st.session_state.editor_title = new_title
+
+            # Rich text editor via Quill.js injected as HTML component
+            quill_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ background: transparent; font-family: 'DM Mono', monospace; }}
+    #toolbar {{
+      border: 1px solid #e5e5e5;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      background: #fff;
+      padding: 4px;
+    }}
+    #editor {{
+      border: 1px solid #e5e5e5;
+      border-radius: 0 0 8px 8px;
+      background: #fff;
+      min-height: 420px;
+      font-size: 14px;
+      line-height: 1.8;
+    }}
+    .ql-editor {{ min-height: 400px; padding: 20px 24px; }}
+    .ql-toolbar button {{ color: #1a1a1a !important; }}
+    #save-area {{
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }}
+    #content-out {{
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }}
+    #copy-btn {{
+      padding: 8px 20px;
+      background: #1a1a1a;
+      color: #fafaf8;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      letter-spacing: 0.05em;
+    }}
+    #copy-btn:hover {{ background: #333; }}
+    #copied-msg {{ font-size: 12px; color: #27ae60; display: none; }}
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <span class="ql-formats">
+      <select class="ql-header">
+        <option value="1">Heading 1</option>
+        <option value="2">Heading 2</option>
+        <option value="3">Heading 3</option>
+        <option selected>Normal</option>
+      </select>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-bold"></button>
+      <button class="ql-italic"></button>
+      <button class="ql-underline"></button>
+      <button class="ql-strike"></button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-blockquote"></button>
+      <button class="ql-code-block"></button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-list" value="ordered"></button>
+      <button class="ql-list" value="bullet"></button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-link"></button>
+      <button class="ql-clean"></button>
+    </span>
+  </div>
+  <div id="editor"></div>
+
+  <div id="save-area">
+    <button id="copy-btn" onclick="copyContent()">Copy HTML to clipboard</button>
+    <span id="copied-msg">✓ Copied!</span>
+  </div>
+
+  <textarea id="content-out"></textarea>
+
+  <script>
+    var quill = new Quill('#editor', {{
+      theme: 'snow',
+      modules: {{ toolbar: '#toolbar' }},
+      placeholder: 'Start writing your note...'
+    }});
+
+    // Load existing content
+    var existing = {repr(st.session_state.editor_content)};
+    if (existing && existing.trim() !== '') {{
+      quill.root.innerHTML = existing;
+    }}
+
+    function copyContent() {{
+      var html = quill.root.innerHTML;
+      navigator.clipboard.writeText(html).then(function() {{
+        document.getElementById('copied-msg').style.display = 'inline';
+        setTimeout(function() {{
+          document.getElementById('copied-msg').style.display = 'none';
+        }}, 2000);
+      }});
+    }}
+
+    // Auto-send content to Streamlit every 2 seconds via postMessage
+    setInterval(function() {{
+      var html = quill.root.innerHTML;
+      window.parent.postMessage({{type: 'quill-content', html: html}}, '*');
+    }}, 2000);
+  </script>
+</body>
+</html>
+"""
+
+            import streamlit.components.v1 as components
+            components.html(quill_html, height=560, scrolling=False)
+
+            # Content input — user pastes HTML from Quill
+            st.markdown("""
+            <p style='color:#888; font-size:12px; margin-top:8px;'>
+            💡 <b>To save:</b> click "Copy HTML to clipboard" above, then paste it into the box below, then click Save.
+            </p>
+            """, unsafe_allow_html=True)
+
+            pasted_content = st.text_area(
+                "Paste HTML content here:",
+                value=st.session_state.editor_content,
+                height=120,
+                placeholder="Click 'Copy HTML to clipboard' above, then paste here...",
+                key=f"paste_area_{st.session_state.editing_post_id}",
+                label_visibility="collapsed"
+            )
+            if pasted_content:
+                st.session_state.editor_content = pasted_content
+
+            # Preview
+            if st.session_state.editor_content and st.session_state.editor_content.strip() not in ("", "<p><br></p>"):
+                with st.expander("Preview", expanded=False):
+                    st.markdown(f"""
+                    <div style="max-width:680px; line-height:1.9; font-size:15px; padding:12px 0;">
+                    {st.session_state.editor_content}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # Action buttons
+            st.markdown("---")
+            btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 1])
+
+            with btn_col1:
+                if st.button("💾 Save as Draft", use_container_width=True, key="save_draft_btn"):
+                    if not st.session_state.editor_title.strip():
+                        st.error("Please add a title before saving.")
+                    else:
+                        try:
+                            result = save_post(
+                                st.session_state.editing_post_id,
+                                st.session_state.editor_title,
+                                st.session_state.editor_content,
+                                "draft"
+                            )
+                            st.session_state.editor_status = "draft"
+                            st.session_state.posts_cache_bust += 1
+                            load_posts.clear()
+                            st.success(f"Draft saved! ({result})")
+                        except Exception as e:
+                            st.error(f"Could not save: {e}")
+
+            with btn_col2:
+                if st.button("🚀 Publish", use_container_width=True, key="publish_btn"):
+                    if not st.session_state.editor_title.strip():
+                        st.error("Please add a title before publishing.")
+                    elif not st.session_state.editor_content.strip() or st.session_state.editor_content.strip() == "<p><br></p>":
+                        st.error("Content is empty.")
+                    else:
+                        try:
+                            result = save_post(
+                                st.session_state.editing_post_id,
+                                st.session_state.editor_title,
+                                st.session_state.editor_content,
+                                "published"
+                            )
+                            st.session_state.editor_status = "published"
+                            st.session_state.posts_cache_bust += 1
+                            load_posts.clear()
+                            st.success("Published! 🎉 Check the Notes tab.")
+                        except Exception as e:
+                            st.error(f"Could not publish: {e}")
+
+            with btn_col3:
+                if st.button("🗑️ Delete", use_container_width=True, key="delete_btn"):
+                    try:
+                        delete_post(st.session_state.editing_post_id)
+                        st.session_state.editing_post_id = None
+                        st.session_state.editor_title = ""
+                        st.session_state.editor_content = ""
+                        st.session_state.posts_cache_bust += 1
+                        load_posts.clear()
+                        st.success("Post deleted.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Could not delete: {e}")
+
+            # Status indicator
+            if st.session_state.editor_status:
+                status_color = "#27ae60" if st.session_state.editor_status == "published" else "#888"
+                st.markdown(f"<p style='color:{status_color}; font-size:12px;'>Status: {st.session_state.editor_status}</p>", unsafe_allow_html=True)
