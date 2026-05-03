@@ -109,7 +109,6 @@ def get_posts_worksheet():
         ws.append_row(["id", "date", "title", "content", "status", "updated_at"])
     return ws
 
-@st.cache_data(ttl=60)
 def load_posts(status_filter=None):
     """Load all posts, optionally filtering by status."""
     try:
@@ -859,18 +858,154 @@ with tab5:
             )
             st.session_state.editor_title = new_title
 
-            # Rich text editor via streamlit-quill
-            from streamlit_quill import st_quill
+            # Rich text editor via Quill.js injected as HTML component
+            quill_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ background: transparent; font-family: 'DM Mono', monospace; }}
+    #toolbar {{
+      border: 1px solid #e5e5e5;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      background: #fff;
+      padding: 4px;
+    }}
+    #editor {{
+      border: 1px solid #e5e5e5;
+      border-radius: 0 0 8px 8px;
+      background: #fff;
+      min-height: 420px;
+      font-size: 14px;
+      line-height: 1.8;
+    }}
+    .ql-editor {{ min-height: 400px; padding: 20px 24px; }}
+    .ql-toolbar button {{ color: #1a1a1a !important; }}
+    #save-area {{
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }}
+    #content-out {{
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }}
+    #copy-btn {{
+      padding: 8px 20px;
+      background: #1a1a1a;
+      color: #fafaf8;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      letter-spacing: 0.05em;
+    }}
+    #copy-btn:hover {{ background: #333; }}
+    #copied-msg {{ font-size: 12px; color: #27ae60; display: none; }}
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <span class="ql-formats">
+      <select class="ql-header">
+        <option value="1">Heading 1</option>
+        <option value="2">Heading 2</option>
+        <option value="3">Heading 3</option>
+        <option selected>Normal</option>
+      </select>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-bold"></button>
+      <button class="ql-italic"></button>
+      <button class="ql-underline"></button>
+      <button class="ql-strike"></button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-blockquote"></button>
+      <button class="ql-code-block"></button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-list" value="ordered"></button>
+      <button class="ql-list" value="bullet"></button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-link"></button>
+      <button class="ql-clean"></button>
+    </span>
+  </div>
+  <div id="editor"></div>
 
-            content = st_quill(
-                placeholder="Start writing your note...",
-                html=True,
+  <div id="save-area">
+    <button id="copy-btn" onclick="copyContent()">Copy HTML to clipboard</button>
+    <span id="copied-msg">✓ Copied!</span>
+  </div>
+
+  <textarea id="content-out"></textarea>
+
+  <script>
+    var quill = new Quill('#editor', {{
+      theme: 'snow',
+      modules: {{ toolbar: '#toolbar' }},
+      placeholder: 'Start writing your note...'
+    }});
+
+    // Load existing content
+    var existing = {repr(st.session_state.editor_content)};
+    if (existing && existing.trim() !== '') {{
+      quill.root.innerHTML = existing;
+    }}
+
+    function copyContent() {{
+      var html = quill.root.innerHTML;
+      navigator.clipboard.writeText(html).then(function() {{
+        document.getElementById('copied-msg').style.display = 'inline';
+        setTimeout(function() {{
+          document.getElementById('copied-msg').style.display = 'none';
+        }}, 2000);
+      }});
+    }}
+
+    // Auto-send content to Streamlit every 2 seconds via postMessage
+    setInterval(function() {{
+      var html = quill.root.innerHTML;
+      window.parent.postMessage({{type: 'quill-content', html: html}}, '*');
+    }}, 2000);
+  </script>
+</body>
+</html>
+"""
+
+            import streamlit.components.v1 as components
+            components.html(quill_html, height=560, scrolling=False)
+
+            # Content input — user pastes HTML from Quill
+            st.markdown("""
+            <p style='color:#888; font-size:12px; margin-top:8px;'>
+            💡 <b>To save:</b> click "Copy HTML to clipboard" above, then paste it into the box below, then click Save.
+            </p>
+            """, unsafe_allow_html=True)
+
+            pasted_content = st.text_area(
+                "Paste HTML content here:",
                 value=st.session_state.editor_content,
-                key=f"quill_{st.session_state.editing_post_id}",
+                height=120,
+                placeholder="Click 'Copy HTML to clipboard' above, then paste here...",
+                key=f"paste_area_{st.session_state.editing_post_id}",
+                label_visibility="collapsed"
             )
-            if content is not None:
-                st.session_state.editor_content = content
+            if pasted_content:
+                st.session_state.editor_content = pasted_content
 
+            # Preview
             if st.session_state.editor_content and st.session_state.editor_content.strip() not in ("", "<p><br></p>"):
                 with st.expander("Preview", expanded=False):
                     st.markdown(f"""
