@@ -50,6 +50,7 @@ hr { border: none; border-top: 1px solid #e5e5e5; margin: 1.5rem 0; }
 # ── Google Sheets connection ──────────────────────────────────────────────────
 SPREADSHEET_ID = "1qZWYbXGTFsDMCp9LPOip1PlJEsS_jnOJStxcKkUAS78"
 
+# Read+write scopes so we can save posts
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -98,6 +99,7 @@ def load_sector_notes():
 
 # ── Posts helpers ─────────────────────────────────────────────────────────────
 def get_posts_worksheet():
+    """Get or create the Finance Blog Posts worksheet."""
     client = get_gsheet_client()
     sheet = client.open_by_key(SPREADSHEET_ID)
     try:
@@ -107,8 +109,9 @@ def get_posts_worksheet():
         ws.append_row(["id", "date", "title", "content", "status", "updated_at"])
     return ws
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_posts(status_filter=None):
+    """Load all posts, optionally filtering by status."""
     try:
         ws = get_posts_worksheet()
         records = ws.get_all_records()
@@ -125,6 +128,7 @@ def load_posts(status_filter=None):
         return pd.DataFrame(columns=["id", "date", "title", "content", "status", "updated_at"])
 
 def save_post(post_id, title, content, status):
+    """Insert a new post or update an existing one."""
     ws = get_posts_worksheet()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     today = datetime.now().strftime("%Y-%m-%d")
@@ -132,13 +136,16 @@ def save_post(post_id, title, content, status):
     records = ws.get_all_records()
     for i, row in enumerate(records):
         if str(row.get("id", "")) == str(post_id):
+            # Update existing — row index is i+2 (1-indexed + header)
             ws.update(f"A{i+2}:F{i+2}", [[post_id, row.get("date", today), title, content, status, now]])
             return "updated"
 
+    # New post
     ws.append_row([post_id, today, title, content, status, now])
     return "created"
 
 def delete_post(post_id):
+    """Delete a post row by id."""
     ws = get_posts_worksheet()
     records = ws.get_all_records()
     for i, row in enumerate(records):
@@ -721,6 +728,7 @@ with tab4:
     st.markdown("<p style='color:#888; font-size:12px; margin-top:-10px;'>Research notes & market commentary</p>", unsafe_allow_html=True)
     st.markdown("---")
 
+    # If a specific post is selected, show it full-width
     if st.session_state.view_post_id:
         try:
             ws = get_posts_worksheet()
@@ -735,6 +743,7 @@ with tab4:
                 updated = post.get("updated_at","")
                 st.markdown(f"<p style='color:#888; font-size:12px;'>{date_str} · Last updated {updated[:10] if updated else ''}</p>", unsafe_allow_html=True)
                 st.markdown("---")
+                # Render the HTML content safely
                 st.markdown(f"""
                 <div style="max-width: 720px; line-height: 1.9; font-size: 15px;">
                 {post.get('content','')}
@@ -748,6 +757,7 @@ with tab4:
         except Exception as e:
             st.error(f"Could not load post: {e}")
     else:
+        # Show post list
         try:
             pub_posts = load_posts(status_filter="published")
             if pub_posts.empty:
@@ -757,6 +767,7 @@ with tab4:
                     title = post.get("title", "Untitled")
                     date_str = post.get("date", "")
                     content = post.get("content", "")
+                    # Strip HTML tags for preview
                     preview_text = re.sub(r'<[^>]+>', '', content)[:200].strip()
                     if len(re.sub(r'<[^>]+>', '', content)) > 200:
                         preview_text += "..."
@@ -780,6 +791,7 @@ with tab4:
 # ─────────────────────────────────────────────────────────────────────────────
 with tab5:
 
+    # ── Password gate ─────────────────────────────────────────────────────────
     if not st.session_state.editor_authenticated:
         st.markdown("### Editor Access")
         st.markdown("<p style='color:#888; font-size:13px;'>This area is private.</p>", unsafe_allow_html=True)
@@ -793,8 +805,10 @@ with tab5:
                 st.error("Incorrect password.")
         st.stop()
 
+    # ── Authenticated editor ──────────────────────────────────────────────────
     st.markdown("### ✏️ Write")
 
+    # Sidebar-style post list on the left, editor on the right
     list_col, editor_col = st.columns([1, 3])
 
     with list_col:
@@ -810,7 +824,7 @@ with tab5:
 
         try:
             all_posts = load_posts()
-            _ = st.session_state.posts_cache_bust
+            _ = st.session_state.posts_cache_bust  # trigger refresh
 
             if all_posts.empty:
                 st.markdown("<p style='color:#888; font-size:12px;'>No posts yet.</p>", unsafe_allow_html=True)
@@ -835,6 +849,7 @@ with tab5:
             </div>
             """, unsafe_allow_html=True)
         else:
+            # Title input
             new_title = st.text_input(
                 "Title",
                 value=st.session_state.editor_title,
@@ -844,148 +859,17 @@ with tab5:
             )
             st.session_state.editor_title = new_title
 
-            quill_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
-  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
-  <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ background: transparent; font-family: 'DM Mono', monospace; }}
-    #toolbar {{
-      border: 1px solid #e5e5e5;
-      border-bottom: none;
-      border-radius: 8px 8px 0 0;
-      background: #fff;
-      padding: 4px;
-    }}
-    #editor {{
-      border: 1px solid #e5e5e5;
-      border-radius: 0 0 8px 8px;
-      background: #fff;
-      min-height: 420px;
-      font-size: 14px;
-      line-height: 1.8;
-    }}
-    .ql-editor {{ min-height: 400px; padding: 20px 24px; }}
-    .ql-toolbar button {{ color: #1a1a1a !important; }}
-    #save-area {{
-      margin-top: 12px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }}
-    #content-out {{
-      position: absolute;
-      left: -9999px;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-    }}
-    #copy-btn {{
-      padding: 8px 20px;
-      background: #1a1a1a;
-      color: #fafaf8;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      font-family: 'DM Mono', monospace;
-      letter-spacing: 0.05em;
-    }}
-    #copy-btn:hover {{ background: #333; }}
-    #copied-msg {{ font-size: 12px; color: #27ae60; display: none; }}
-  </style>
-</head>
-<body>
-  <div id="toolbar">
-    <span class="ql-formats">
-      <select class="ql-header">
-        <option value="1">Heading 1</option>
-        <option value="2">Heading 2</option>
-        <option value="3">Heading 3</option>
-        <option selected>Normal</option>
-      </select>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-bold"></button>
-      <button class="ql-italic"></button>
-      <button class="ql-underline"></button>
-      <button class="ql-strike"></button>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-blockquote"></button>
-      <button class="ql-code-block"></button>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-list" value="ordered"></button>
-      <button class="ql-list" value="bullet"></button>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-link"></button>
-      <button class="ql-clean"></button>
-    </span>
-  </div>
-  <div id="editor"></div>
+            # Rich text editor via streamlit-quill
+            from streamlit_quill import st_quill
 
-  <div id="save-area">
-    <button id="copy-btn" onclick="copyContent()">Copy HTML to clipboard</button>
-    <span id="copied-msg">✓ Copied!</span>
-  </div>
-
-  <textarea id="content-out"></textarea>
-
-  <script>
-    var quill = new Quill('#editor', {{
-      theme: 'snow',
-      modules: {{ toolbar: '#toolbar' }},
-      placeholder: 'Start writing your note...'
-    }});
-
-    var existing = {repr(st.session_state.editor_content)};
-    if (existing && existing.trim() !== '') {{
-      quill.root.innerHTML = existing;
-    }}
-
-    function copyContent() {{
-      var html = quill.root.innerHTML;
-      navigator.clipboard.writeText(html).then(function() {{
-        document.getElementById('copied-msg').style.display = 'inline';
-        setTimeout(function() {{
-          document.getElementById('copied-msg').style.display = 'none';
-        }}, 2000);
-      }});
-    }}
-
-    setInterval(function() {{
-      var html = quill.root.innerHTML;
-      window.parent.postMessage({{type: 'quill-content', html: html}}, '*');
-    }}, 2000);
-  </script>
-</body>
-</html>
-"""
-
-            import streamlit.components.v1 as components
-            components.html(quill_html, height=560, scrolling=False)
-
-            st.markdown("""
-            <p style='color:#888; font-size:12px; margin-top:8px;'>
-            💡 <b>To save:</b> click "Copy HTML to clipboard" above, then paste it into the box below, then click Save.
-            </p>
-            """, unsafe_allow_html=True)
-
-            pasted_content = st.text_area(
-                "Paste HTML content here:",
+            content = st_quill(
+                placeholder="Start writing your note...",
+                html=True,
                 value=st.session_state.editor_content,
-                height=120,
-                placeholder="Click 'Copy HTML to clipboard' above, then paste here...",
-                key=f"paste_area_{st.session_state.editing_post_id}",
-                label_visibility="collapsed"
+                key=f"quill_{st.session_state.editing_post_id}",
             )
-            if pasted_content:
-                st.session_state.editor_content = pasted_content
+            if content is not None:
+                st.session_state.editor_content = content
 
             if st.session_state.editor_content and st.session_state.editor_content.strip() not in ("", "<p><br></p>"):
                 with st.expander("Preview", expanded=False):
@@ -995,6 +879,7 @@ with tab5:
                     </div>
                     """, unsafe_allow_html=True)
 
+            # Action buttons
             st.markdown("---")
             btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 1])
 
@@ -1052,6 +937,7 @@ with tab5:
                     except Exception as e:
                         st.error(f"Could not delete: {e}")
 
+            # Status indicator
             if st.session_state.editor_status:
                 status_color = "#27ae60" if st.session_state.editor_status == "published" else "#888"
                 st.markdown(f"<p style='color:{status_color}; font-size:12px;'>Status: {st.session_state.editor_status}</p>", unsafe_allow_html=True)
