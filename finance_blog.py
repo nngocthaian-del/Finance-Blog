@@ -109,6 +109,7 @@ def get_posts_worksheet():
         ws.append_row(["id", "date", "title", "content", "status", "updated_at"])
     return ws
 
+@st.cache_data(ttl=60)
 def load_posts(status_filter=None):
     """Load all posts, optionally filtering by status."""
     try:
@@ -858,152 +859,123 @@ with tab5:
             )
             st.session_state.editor_title = new_title
 
-            # Rich text editor via Quill.js injected as HTML component
-            quill_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
-  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
-  <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ background: transparent; font-family: 'DM Mono', monospace; }}
-    #toolbar {{
-      border: 1px solid #e5e5e5;
-      border-bottom: none;
-      border-radius: 8px 8px 0 0;
-      background: #fff;
-      padding: 4px;
-    }}
-    #editor {{
-      border: 1px solid #e5e5e5;
-      border-radius: 0 0 8px 8px;
-      background: #fff;
-      min-height: 420px;
-      font-size: 14px;
-      line-height: 1.8;
-    }}
-    .ql-editor {{ min-height: 400px; padding: 20px 24px; }}
-    .ql-toolbar button {{ color: #1a1a1a !important; }}
-    #save-area {{
-      margin-top: 12px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }}
-    #content-out {{
-      position: absolute;
-      left: -9999px;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-    }}
-    #copy-btn {{
-      padding: 8px 20px;
-      background: #1a1a1a;
-      color: #fafaf8;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      font-family: 'DM Mono', monospace;
-      letter-spacing: 0.05em;
-    }}
-    #copy-btn:hover {{ background: #333; }}
-    #copied-msg {{ font-size: 12px; color: #27ae60; display: none; }}
-  </style>
-</head>
-<body>
-  <div id="toolbar">
-    <span class="ql-formats">
-      <select class="ql-header">
-        <option value="1">Heading 1</option>
-        <option value="2">Heading 2</option>
-        <option value="3">Heading 3</option>
-        <option selected>Normal</option>
-      </select>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-bold"></button>
-      <button class="ql-italic"></button>
-      <button class="ql-underline"></button>
-      <button class="ql-strike"></button>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-blockquote"></button>
-      <button class="ql-code-block"></button>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-list" value="ordered"></button>
-      <button class="ql-list" value="bullet"></button>
-    </span>
-    <span class="ql-formats">
-      <button class="ql-link"></button>
-      <button class="ql-clean"></button>
-    </span>
-  </div>
-  <div id="editor"></div>
-
-  <div id="save-area">
-    <button id="copy-btn" onclick="copyContent()">Copy HTML to clipboard</button>
-    <span id="copied-msg">✓ Copied!</span>
-  </div>
-
-  <textarea id="content-out"></textarea>
-
-  <script>
-    var quill = new Quill('#editor', {{
-      theme: 'snow',
-      modules: {{ toolbar: '#toolbar' }},
-      placeholder: 'Start writing your note...'
-    }});
-
-    // Load existing content
-    var existing = {repr(st.session_state.editor_content)};
-    if (existing && existing.trim() !== '') {{
-      quill.root.innerHTML = existing;
-    }}
-
-    function copyContent() {{
-      var html = quill.root.innerHTML;
-      navigator.clipboard.writeText(html).then(function() {{
-        document.getElementById('copied-msg').style.display = 'inline';
-        setTimeout(function() {{
-          document.getElementById('copied-msg').style.display = 'none';
-        }}, 2000);
-      }});
-    }}
-
-    // Auto-send content to Streamlit every 2 seconds via postMessage
-    setInterval(function() {{
-      var html = quill.root.innerHTML;
-      window.parent.postMessage({{type: 'quill-content', html: html}}, '*');
-    }}, 2000);
-  </script>
-</body>
-</html>
-"""
-
+            # Rich text editor — full Quill with font, color, size
             import streamlit.components.v1 as components
-            components.html(quill_html, height=560, scrolling=False)
+            import json as _json
 
-            # Content input — user pastes HTML from Quill
-            st.markdown("""
-            <p style='color:#888; font-size:12px; margin-top:8px;'>
-            💡 <b>To save:</b> click "Copy HTML to clipboard" above, then paste it into the box below, then click Save.
-            </p>
-            """, unsafe_allow_html=True)
+            _existing_js = _json.dumps(st.session_state.editor_content or "")
 
-            pasted_content = st.text_area(
-                "Paste HTML content here:",
-                value=st.session_state.editor_content,
-                height=120,
-                placeholder="Click 'Copy HTML to clipboard' above, then paste here...",
-                key=f"paste_area_{st.session_state.editing_post_id}",
-                label_visibility="collapsed"
+            _quill_html = (
+                '<!DOCTYPE html><html><head>'
+                '<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">'
+                '<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>'
+                '<style>'
+                '* { box-sizing: border-box; margin: 0; padding: 0; }'
+                'body { background: transparent; }'
+                '#toolbar { border: 1px solid #e5e5e5; border-bottom: none; border-radius: 8px 8px 0 0;'
+                '  background: #fff; padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }'
+                '#editor-wrap { border: 1px solid #e5e5e5; border-radius: 0 0 8px 8px; background: #fff; }'
+                '.ql-editor { min-height: 380px; padding: 20px 24px; font-size: 14px; line-height: 1.8; }'
+                '.ql-font-serif { font-family: Georgia, serif; }'
+                '.ql-font-monospace { font-family: "Courier New", monospace; }'
+                '#send-btn { margin-top: 10px; width: 100%; padding: 10px; background: #1a1a1a;'
+                '  color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }'
+                '#send-btn:hover { background: #333; }'
+                '#status-msg { margin-top: 6px; font-size: 12px; color: #27ae60; min-height: 18px; text-align: center; }'
+                '</style></head><body>'
+                '<div id="toolbar">'
+                '<select class="ql-font">'
+                '  <option selected>Sans-serif</option>'
+                '  <option value="serif">Serif</option>'
+                '  <option value="monospace">Monospace</option>'
+                '</select>'
+                '<select class="ql-size">'
+                '  <option value="small">Small</option>'
+                '  <option selected>Normal</option>'
+                '  <option value="large">Large</option>'
+                '  <option value="huge">Huge</option>'
+                '</select>'
+                '<select class="ql-header">'
+                '  <option value="1">H1</option><option value="2">H2</option>'
+                '  <option value="3">H3</option><option selected>Body</option>'
+                '</select>'
+                '<span class="ql-formats">'
+                '  <button class="ql-bold"></button><button class="ql-italic"></button>'
+                '  <button class="ql-underline"></button><button class="ql-strike"></button>'
+                '</span>'
+                '<span class="ql-formats">'
+                '  <select class="ql-color">'
+                '    <option selected></option>'
+                '    <option value="#1a1a1a"></option><option value="#c0392b"></option>'
+                '    <option value="#e67e22"></option><option value="#27ae60"></option>'
+                '    <option value="#2980b9"></option><option value="#8e44ad"></option>'
+                '    <option value="#888888"></option>'
+                '  </select>'
+                '  <select class="ql-background">'
+                '    <option selected></option>'
+                '    <option value="#fff3cd"></option><option value="#d4edda"></option>'
+                '    <option value="#d1ecf1"></option><option value="#f8d7da"></option>'
+                '    <option value="#e2e3e5"></option><option value="#1a1a1a"></option>'
+                '  </select>'
+                '</span>'
+                '<span class="ql-formats">'
+                '  <button class="ql-blockquote"></button><button class="ql-code-block"></button>'
+                '</span>'
+                '<span class="ql-formats">'
+                '  <button class="ql-list" value="ordered"></button>'
+                '  <button class="ql-list" value="bullet"></button>'
+                '  <button class="ql-indent" value="-1"></button>'
+                '  <button class="ql-indent" value="+1"></button>'
+                '</span>'
+                '<span class="ql-formats">'
+                '  <button class="ql-align" value=""></button>'
+                '  <button class="ql-align" value="center"></button>'
+                '  <button class="ql-align" value="right"></button>'
+                '</span>'
+                '<span class="ql-formats">'
+                '  <button class="ql-link"></button><button class="ql-clean"></button>'
+                '</span>'
+                '</div>'
+                '<div id="editor-wrap"><div id="editor"></div></div>'
+                '<button id="send-btn" onclick="sendContent()">✓ Done — click to send content to Streamlit</button>'
+                '<div id="status-msg"></div>'
+                '<script>'
+                'var Font = Quill.import("formats/font");'
+                'Font.whitelist = ["serif", "monospace"];'
+                'Quill.register(Font, true);'
+                'var quill = new Quill("#editor", { theme: "snow", modules: { toolbar: "#toolbar" },'
+                '  placeholder: "Start writing your note..." });'
+                f'var existing = {_existing_js};'
+                'if (existing && existing.trim() !== "") { quill.root.innerHTML = existing; }'
+                'function sendContent() {'
+                '  var html = quill.root.innerHTML;'
+                '  window.parent.postMessage({ type: "streamlit:setComponentValue", value: html }, "*");'
+                '  document.getElementById("status-msg").textContent = "✓ Content sent! Now click Save or Publish.";'
+                '  setTimeout(function() { document.getElementById("status-msg").textContent = ""; }, 4000);'
+                '}'
+                'setInterval(function() {'
+                '  window.parent.postMessage({ type: "streamlit:setComponentValue", value: quill.root.innerHTML }, "*");'
+                '}, 3000);'
+                '</script></body></html>'
             )
-            if pasted_content:
-                st.session_state.editor_content = pasted_content
+
+            components.html(_quill_html, height=600, scrolling=False)
+
+            st.markdown(
+                "<p style='color:#aaa; font-size:11px; margin-top:4px;'>"
+                "Write in the editor above, then paste your HTML here (or type directly).</p>",
+                unsafe_allow_html=True
+            )
+            _pasted = st.text_area(
+                "Content (HTML):",
+                value=st.session_state.editor_content,
+                height=90,
+                key=f"content_paste_{st.session_state.editing_post_id}",
+                label_visibility="collapsed",
+                placeholder="Your formatted HTML will appear here after clicking Done above — or paste HTML directly.",
+            )
+            if _pasted and _pasted != st.session_state.editor_content:
+                st.session_state.editor_content = _pasted
 
             # Preview
             if st.session_state.editor_content and st.session_state.editor_content.strip() not in ("", "<p><br></p>"):
